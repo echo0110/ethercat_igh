@@ -597,7 +597,7 @@ void ec_fsm_slave_scan_state_sii_size(
 
         EC_SLAVE_DBG(slave, 1, "Found category type %u with size %u."
                 " Proceeding to offset %zu.\n",
-                cat_type, cat_size, next_offset);
+                cat_type, cat_size, (size_t)next_offset);
 
         if (next_offset >= EC_MAX_SII_SIZE) {
             EC_SLAVE_WARN(slave, "SII size exceeds %u words"
