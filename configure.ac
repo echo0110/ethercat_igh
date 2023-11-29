@@ -524,6 +524,59 @@ fi
 AC_SUBST(KERNEL_R8169,[$kernel_r8169])
 
 #------------------------------------------------------------------------------
+# stmmac driver
+#------------------------------------------------------------------------------
+
+AC_ARG_ENABLE([stmmac],
+    AS_HELP_STRING([--enable-stmmac],
+                   [Enable stmmac driver]),
+    [
+        case "${enableval}" in
+            yes) enablestmmac=1
+                ;;
+            no) enablestmmac=0
+                ;;
+            *) AC_MSG_ERROR([Invalid value for --enable-stmmac])
+                ;;
+        esac
+    ],
+    [enablestmmac=0] # disabled by default
+)
+
+AM_CONDITIONAL(ENABLE_STMMAC, test "x$enablestmmac" = "x1")
+AC_SUBST(ENABLE_STMMAC,[$enablestmmac])
+
+AC_ARG_WITH([stmmac-kernel],
+    AS_HELP_STRING([--with-stmmac-kernel=<X.Y.Z>],
+                   [stmmac kernel (only if differing)]),
+    [
+        kernelstmmac=[$withval]
+    ],
+    [
+        kernelstmmac=$linuxversion
+    ]
+)
+
+if test "x${enablestmmac}" = "x1"; then
+    AC_MSG_CHECKING([for kernel for stmmac driver])
+
+    kernels=`ls -1 ${srcdir}/devices/stmmac/ | grep -oE "^stmmac_main-.*" | cut -d "-" -f 2 | uniq`
+    found=0
+    for k in $kernels; do
+        if test "$kernelstmmac" = "$k"; then
+            found=1
+        fi
+    done
+    if test $found -ne 1; then
+        AC_MSG_ERROR([kernel $kernelstmmac not available for stmmac driver!])
+    fi
+
+    AC_MSG_RESULT([$kernelstmmac])
+fi
+
+AC_SUBST(KERNEL_STMMAC,[$kernelstmmac])
+
+#------------------------------------------------------------------------------
 # CCAT driver
 #------------------------------------------------------------------------------
 
@@ -1230,6 +1283,8 @@ AC_CONFIG_FILES([
         devices/e1000e/Makefile
         devices/igb/Kbuild
         devices/igb/Makefile
+        devices/stmmac/Kbuild
+        devices/stmmac/Makefile
         ethercat.spec
         examples/Kbuild
         examples/Makefile
