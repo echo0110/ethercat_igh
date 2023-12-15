@@ -175,6 +175,8 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
 
     ec_lock_init(&master->device_sem);
 
+    spin_lock_init(&master->lock);
+
     master->phase = EC_ORPHANED;
     master->active = 0;
     master->config_changed = 0;
@@ -2753,6 +2755,7 @@ size_t ecrt_master_send(ec_master_t *master)
     ec_device_index_t dev_idx;
     size_t sent_bytes = 0;
 
+    spin_lock(&master->lock);
 
     if (master->injection_seq_rt != master->injection_seq_fsm) {
         // inject datagram produced by master FSM
@@ -2791,6 +2794,7 @@ size_t ecrt_master_send(ec_master_t *master)
             ec_master_send_datagrams(master, dev_idx));
     }
 
+    spin_unlock(&master->lock);
     return sent_bytes;
 }
 
