@@ -2100,7 +2100,7 @@ const ec_slave_config_t *ec_master_get_config_const(
  * \return Number of domains.
  */
 unsigned int ec_master_domain_count(
-			 ec_master_t *master /**< EtherCAT master. */
+        const ec_master_t *master /**< EtherCAT master. */
         )
 {
     const ec_domain_t *domain;
