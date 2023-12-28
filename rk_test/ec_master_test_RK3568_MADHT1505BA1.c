@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -7,8 +8,11 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-#include <sched.h>
 #include <stdbool.h>
+#include <getopt.h>
+#include <sched.h>
+#include <pthread.h>
+#include <stdarg.h>
 /****************************************************************************/
  
 #include "ecrt.h"
@@ -128,7 +132,94 @@ ec_pdo_entry_reg_t domain_regs[] = {
 {}};
 
 static int64_t  system_time_base = 0LL;
+int cpu_core = 3;
+int debug_mode = 0;
 /*****************************************************************************/
+
+static const char short_options[] = "d:c:";
+static const struct option long_options[] = {{"debug", required_argument, NULL, 'd'},
+                                             {"cpu_core", no_argument, NULL, 'c'},
+                                             {"help", no_argument, NULL, 'h'},
+                                             {0, 0, 0}};
+
+static void usage_tip(FILE *fp, int argc, char **argv) {
+    fprintf(fp,
+            "Usage: %s [options]\n"
+            "Version %s\n"
+            "Options:\n"
+            "-d | --debug       Enabling debug mode\n"
+            "-c | --log_level   bind cpu_core\n"
+            "-h | --help        for help \n\n"
+            "\n",
+            argv[0], "V1.0");
+}
+
+void get_opt(int argc, char *argv[]) {
+    for (;;) {
+        int idx;
+        int c;
+        c = getopt_long(argc, argv, short_options, long_options, &idx);
+        if (-1 == c)
+            break;
+        switch (c) {
+        case 0: /* getopt_long() flag */
+            break;
+        case 'd':
+            debug_mode = atoi(optarg);
+            break;
+        case 'c':
+            cpu_core = atoi(optarg);
+            break;
+        case 'h':
+            usage_tip(stdout, argc, argv);
+            exit(EXIT_SUCCESS);
+        default:
+            usage_tip(stderr, argc, argv);
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+
+void printf_debug(const char* fmt, ...){
+
+  if (debug_mode) {
+    va_list args;
+    va_start(args, fmt); 
+    vprintf(fmt, args); 
+    va_end(args);
+  }
+}
+
+static int thread_bind_cpu(int target_cpu)
+{
+    cpu_set_t mask;
+    int cpu_num = sysconf(_SC_NPROCESSORS_CONF);
+    int i;
+
+    if (target_cpu >= cpu_num)
+        return -1;
+
+    CPU_ZERO(&mask);
+    CPU_SET(target_cpu, &mask);
+
+    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0)
+        perror("pthread_setaffinity_np");
+
+    if (pthread_getaffinity_np(pthread_self(), sizeof(mask), &mask) < 0)
+        perror("pthread_getaffinity_np");
+
+    printf("Thread(%ld) bound to cpu:", gettid());
+    for (i = 0; i < CPU_SETSIZE; i++) {
+        if (CPU_ISSET(i, &mask)) {
+            printf(" %d", i);
+            break;    
+        }
+    }
+    printf("\n");
+
+    return i >= cpu_num ? -1 : i;
+}
 
 struct timespec timespec_add(struct timespec time1, struct timespec time2)
 {
@@ -153,13 +244,13 @@ void check_master_state(void)
     ecrt_master_state(master, &ms);
  
     if (ms.slaves_responding != master_state.slaves_responding) {
-        printf("found %u slave(s).\n", ms.slaves_responding);
+        printf_debug("found %u slave(s).\n", ms.slaves_responding);
     }
     if (ms.al_states != master_state.al_states) {
-        printf("AL states: 0x%02X.\n", ms.al_states);
+        printf_debug("AL states: 0x%02X.\n", ms.al_states);
     }
     if (ms.link_up != master_state.link_up) {
-        printf("Link is %s.\n", ms.link_up ? "up" : "down");
+        printf_debug("Link is %s.\n", ms.link_up ? "up" : "down");
     }
  
     master_state = ms;
@@ -176,12 +267,12 @@ void check_slave_config_states(void)
  
     //printf("sc->watchdog_divider = %d sc->watchdog_intervals = %d\n", sc->watchdog_divider, sc->watchdog_intervals);
     if (s.al_state != sc_state.al_state) {
-        printf("slaveDrive: State 0x%02X.\n", s.al_state);
+        printf_debug("slaveDrive: State 0x%02X.\n", s.al_state);
     }
     if (s.online != sc_state.online) {
-        printf("slaveDrive: %s.\n", s.online ? "online" : "offline");
+        printf_debug("slaveDrive: %s.\n", s.online ? "online" : "offline");
     }
-    printf("slaveDrive: %s operational.\n", s.operational ? "yes" : "Not ");
+    printf_debug("slaveDrive: %s  operational.\n", s.operational ? "yes" : "Not ");
  
     sc_state = s;
 }
@@ -196,10 +287,10 @@ void check_domain_state(void)
     ecrt_domain_state(domain, &ds);
  
     if (ds.working_counter != domain_state.working_counter) {
-        printf("Domain: WC %u.\n", ds.working_counter);
+        printf_debug("Domain: WC %u.\n", ds.working_counter);
     }
     if (ds.wc_state != domain_state.wc_state) {
-        printf("Domain: State %u.\n", ds.wc_state);
+        printf_debug("Domain: State %u.\n", ds.wc_state);
     }
  
     domain_state = ds;
@@ -244,32 +335,32 @@ void cyclic_task()
             EC_WRITE_U16(domain_pd + control_word, 0x80); //复位错误码
             EC_WRITE_U8(domain_pd + modes_of_operation, 8); //设置当前控制器模式
             cur_mode = EC_READ_U8(domain_pd + modes_of_operation_display);
-            printf("curMode: %d\t", cur_mode); //当前操作模式
+            printf_debug("curMode: %d\t", cur_mode); //当前操作模式
             cur_status = EC_READ_U16(domain_pd + status_word);
-            printf("curStatus: %d\n", cur_status);
+            printf_debug("curStatus: %d\n", cur_status);
             if((cur_status & 0x004f) == 0x0040 && tmp == false) {
                 EC_WRITE_U16(domain_pd + control_word, 0x06); 
-                printf("0x06\n");
+                printf_debug("0x06\n");
             }
             else if((cur_status & 0x006f) == 0x0021 && tmp == false) {
                 EC_WRITE_U16(domain_pd + control_word, 0x07);
-                printf("0x07\n");
+                printf_debug("0x07\n");
             }
             else if((cur_status & 0x006f) == 0x0023 && tmp == false) {
                 EC_WRITE_U16(domain_pd + control_word, 0x0F);
-                printf("0x0F\n");
+                printf_debug("0x0F\n");
             }
             else if((cur_status & 0x006f) == 0x0027 && tmp == false)
             {
                 EC_WRITE_U16(domain_pd + control_word, 0x001f);
-                printf("0x1f\n");
+                printf_debug("0x1f\n");
     
                 curpos = EC_READ_S32(domain_pd + position_actual_value);     
-                printf("madht >>> Axis  current position = %d\n", curpos);
+                printf_debug("madht >>> Axis  current position = %d\n", curpos);
 
                 if((EC_READ_U16(domain_pd + status_word) & (STATUS_SERVO_ENABLE_BIT)) == 0) {
                     tmp = false;
-                    printf("EC_READ_U16(domain_pd + status_word) & (STATUS_SERVO_ENABLE_BIT)) == 0\n");
+                    printf_debug("EC_READ_U16(domain_pd + status_word) & (STATUS_SERVO_ENABLE_BIT)) == 0\n");
                     continue;
                 }else {
                     tmp = true;
@@ -278,8 +369,8 @@ void cyclic_task()
 
             if(tmp == true) {
                 cur_status = EC_READ_U16(domain_pd + status_word);
-                printf("curpos = %d\t",curpos);
-                printf("actpos... %d\n",EC_READ_S32(domain_pd + position_actual_value));
+                printf_debug("curpos = %d\t",curpos);
+                printf_debug("actpos... %d\n",EC_READ_S32(domain_pd + position_actual_value));
                 curpos += 10000;
                 EC_WRITE_S32(domain_pd + target_position, curpos);
                 tmp = false;
@@ -332,12 +423,24 @@ int main(int argc, char **argv)
     printf("##### rockchip ethercat test #####\n");
     printf("start thread set\n");
     struct sched_param param;
-    int maxpri, count; 
+    int maxpri, count;
+
+    get_opt(argc, argv);
+    printf("cpu_core = %d debug_mode = %d\n", cpu_core, debug_mode);
+
+    // bing cpu core
+    if(thread_bind_cpu(cpu_core) == -1) {
+        printf("bind cpu core fail\n");
+        return -1;
+    }
+
+    // The scheduling priority is the highest
     maxpri = sched_get_priority_max(SCHED_FIFO);
     if(maxpri == -1) { 
         printf("sched_get_priority_max() failed"); 
         return -1; 
     }
+
     printf("max priority of SCHED_FIFO is %d\n", maxpri);
     param.sched_priority = maxpri;
     if (sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1) { 
