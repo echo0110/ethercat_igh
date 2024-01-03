@@ -24,6 +24,7 @@
 #define FREQUENCY 1000
 #define CLOCK_TO_USE CLOCK_MONOTONIC
 #define MEASURE_TIMING
+#define TARGET_VELOCITY        1124000 /*target velocity*/
 
 #define NSEC_PER_SEC (1000000000L)
 #define PERIOD_NS (NSEC_PER_SEC / FREQUENCY)                                                   
@@ -72,6 +73,8 @@ unsigned int touch_probe_status;
 unsigned int touch_probe_pos1_pos_value;
 unsigned int following_error_actual_value;
 unsigned int digital_inputs;
+unsigned int current_velocity;
+unsigned int target_velocity;
 
 static unsigned int cur_status;
 static unsigned int cur_mode;
@@ -93,6 +96,8 @@ ec_pdo_entry_info_t slave_0_pdo_entries[] = {
     {0x6060, 0x00, 8}, /* Modes of operation */
     {0x607a, 0x00, 32}, /* Target position */
     {0x60b8, 0x00, 16}, /* Touch probe function */
+    {0x60ff, 0x00, 32}, /* target_velocity */
+
     {0x603f, 0x00, 16}, /* Error code */
     {0x6041, 0x00, 16}, /* Statusword */
     {0x6061, 0x00, 8}, /* Modes of operation display */
@@ -101,11 +106,12 @@ ec_pdo_entry_info_t slave_0_pdo_entries[] = {
     {0x60ba, 0x00, 32}, /* Touch probe pos1 pos value */
     {0x60f4, 0x00, 32}, /* Following error actual value */
     {0x60fd, 0x00, 32}, /* Digital inputs */
+    {0x606c, 0x00, 32}, /* current_velocity */
 };
 
 ec_pdo_info_t slave_0_pdos[] = {
-    {0x1600, 4, slave_0_pdo_entries + 0}, /* Receive PDO mapping 1 */
-    {0x1a00, 8, slave_0_pdo_entries + 4}, /* Transmit PDO mapping 1 */
+    {0x1600, 5, slave_0_pdo_entries + 0}, /* Receive PDO mapping 1 */
+    {0x1a00, 9, slave_0_pdo_entries + 5}, /* Transmit PDO mapping 1 */
 };
 
 ec_sync_info_t slave_0_syncs[] = {
@@ -129,26 +135,31 @@ ec_pdo_entry_reg_t domain_regs[] = {
 {MADHT1505BA1_alias, MADHT1505BA1_position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x60ba, 0, &touch_probe_pos1_pos_value},
 {MADHT1505BA1_alias, MADHT1505BA1_position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x60f4, 0, &following_error_actual_value},
 {MADHT1505BA1_alias, MADHT1505BA1_position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x60fd, 0, &digital_inputs},
+{MADHT1505BA1_alias, MADHT1505BA1_position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x606c, 0, &current_velocity},
+{MADHT1505BA1_alias, MADHT1505BA1_position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x60ff, 0, &target_velocity},
 {}};
 
 static int64_t  system_time_base = 0LL;
 int cpu_core = 3;
 int debug_mode = 0;
+int mode_option = 0;
 /*****************************************************************************/
 
-static const char short_options[] = "d:c:";
+static const char short_options[] = "d:c:m:";
 static const struct option long_options[] = {{"debug", required_argument, NULL, 'd'},
                                              {"cpu_core", no_argument, NULL, 'c'},
+                                             {"mode", no_argument, NULL, 'm'},
                                              {"help", no_argument, NULL, 'h'},
-                                             {0, 0, 0}};
+                                             {0, 0, 0, 0}};
 
 static void usage_tip(FILE *fp, int argc, char **argv) {
     fprintf(fp,
             "Usage: %s [options]\n"
             "Version %s\n"
             "Options:\n"
-            "-d | --debug       Enabling debug mode\n"
-            "-c | --log_level   bind cpu_core\n"
+            "-d | --debug      Enabling debug mode\n"
+            "-c | --cpu_core   bind cpu_core\n"
+            "-m | --mode       mode options  0 is velocity mode, 1 is target mode\n"
             "-h | --help        for help \n\n"
             "\n",
             argv[0], "V1.0");
@@ -169,6 +180,9 @@ void get_opt(int argc, char *argv[]) {
             break;
         case 'c':
             cpu_core = atoi(optarg);
+            break;
+        case 'm':
+            mode_option = atoi(optarg);
             break;
         case 'h':
             usage_tip(stdout, argc, argv);
@@ -298,7 +312,7 @@ void check_domain_state(void)
  
 /*****************************************************************************/
  
-void cyclic_task()
+void cyclic_task_position_mode()
 {
     int tmp = false;
     struct timespec wakeupTime, time;
@@ -333,11 +347,11 @@ void cyclic_task()
             check_slave_config_states();
 
             EC_WRITE_U16(domain_pd + control_word, 0x80); //复位错误码
-            EC_WRITE_U8(domain_pd + modes_of_operation, 8); //设置当前控制器模式
+            EC_WRITE_U8(domain_pd + modes_of_operation, 8); //设置当前控制器模式为位置模式
             cur_mode = EC_READ_U8(domain_pd + modes_of_operation_display);
             printf_debug("curMode: %d\t", cur_mode); //当前操作模式
             cur_status = EC_READ_U16(domain_pd + status_word);
-            printf_debug("curStatus: %d\n", cur_status);
+            printf_debug("curStatus: %x\n", cur_status);
             if((cur_status & 0x004f) == 0x0040 && tmp == false) {
                 EC_WRITE_U16(domain_pd + control_word, 0x06); 
                 printf_debug("0x06\n");
@@ -392,6 +406,87 @@ void cyclic_task()
         ecrt_master_send(master);
     }
 }
+
+void cyclic_task_velocity_mode()
+{
+    static unsigned int timeout_error = 0;
+    static uint16_t command=0x004F;
+    struct timespec wakeupTime, time;
+    uint16_t    status;
+    int8_t      opmode;
+    int32_t     cur_velocity;
+
+    while(app_run) {
+        wakeupTime = timespec_add(wakeupTime, cycletime);
+        clock_nanosleep(CLOCK_TO_USE, TIMER_ABSTIME, &wakeupTime, NULL);
+
+        // Write application time to master
+        //
+        // It is a good idea to use the target time (not the measured time) as
+        // application time, because it is more stable.
+        //
+        ecrt_master_application_time(master, TIMESPEC2NS(wakeupTime));
+            
+        /*Receive process data*/
+        ecrt_master_receive(master);
+        ecrt_domain_process(domain);
+        // check process data state (optional)
+        check_domain_state();
+
+        if (counter) {
+            counter--;
+        }else {
+            counter = FREQUENCY;
+            check_master_state();
+            check_slave_config_states();
+            /*Check process data state(optional)*/
+            
+            EC_WRITE_U16(domain_pd + control_word, 0x80);
+            // EC_WRITE_U8(domain_pd + modes_of_operation, 9);
+            /*Read inputs*/
+            status = EC_READ_U16(domain_pd + status_word);
+            opmode = EC_READ_U8(domain_pd + modes_of_operation_display);
+            cur_velocity = EC_READ_S32(domain_pd + current_velocity);
+            printf_debug("madht:  act velocity = %d ,  status = 0x%x, opmode = 0x%x\n", cur_velocity,  status, opmode);
+
+            if( (status & 0x004f) == 0x0040) {
+                printf_debug("0x06\n");
+                EC_WRITE_U16(domain_pd + control_word, 0x0006);
+                EC_WRITE_U8(domain_pd + modes_of_operation, 9);
+            }
+    
+            else if( (status & 0x006f) == 0x0021) {
+                printf_debug("0x07\n");
+                EC_WRITE_U16(domain_pd + control_word, 0x0007);
+            }
+    
+            else if( (status & 0x006f) == 0x0023) {
+                printf_debug("0x0f\n");
+                EC_WRITE_U16(domain_pd + control_word, 0x000f);
+                EC_WRITE_S32(domain_pd + target_velocity, TARGET_VELOCITY);
+            }
+            
+            //operation enabled
+            else if( (status & 0x006f) == 0x0027) {
+                printf_debug("0x1f\n");
+                EC_WRITE_U16(domain_pd + control_word, 0x001f);
+            }
+        }
+
+        if (sync_ref_counter) {
+            sync_ref_counter--;
+        } else {
+            sync_ref_counter = 1; // sync every cycle
+
+            clock_gettime(CLOCK_TO_USE, &time);
+            ecrt_master_sync_reference_clock_to(master, TIMESPEC2NS(time));
+        }
+        ecrt_master_sync_slave_clocks(master);
+        // send process data
+        ecrt_domain_queue(domain);
+        ecrt_master_send(master);
+    }
+}
  
 /****************************************************************************/
  
@@ -426,7 +521,7 @@ int main(int argc, char **argv)
     int maxpri, count;
 
     get_opt(argc, argv);
-    printf("cpu_core = %d debug_mode = %d\n", cpu_core, debug_mode);
+    printf("cpu_core = %d debug_mode = %d mode_option = %d\n", cpu_core, debug_mode, mode_option);
 
     // bing cpu core
     if(thread_bind_cpu(cpu_core) == -1) {
@@ -531,13 +626,18 @@ int main(int argc, char **argv)
     while (app_run) {
         pause();
         while (sig_alarms != user_alarms && app_run == true) {
-            cyclic_task();
+            if (mode_option == 0) {
+                cyclic_task_velocity_mode();
+            }else {
+                cyclic_task_position_mode();
+            }
             user_alarms++;
         }
     }
+    
+    ecrt_master_deactivate(master);
     ecrt_release_master(master);
     master = NULL;
     printf("rockchip ec_test is end\n");
     return 0;
-
 }
