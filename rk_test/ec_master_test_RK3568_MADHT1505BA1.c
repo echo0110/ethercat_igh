@@ -415,6 +415,8 @@ void cyclic_task_velocity_mode()
     uint16_t    status;
     int8_t      opmode;
     int32_t     cur_velocity;
+    int change = 0;
+    bool change_velocity = true;
 
     while(app_run) {
         wakeupTime = timespec_add(wakeupTime, cycletime);
@@ -463,13 +465,26 @@ void cyclic_task_velocity_mode()
             else if( (status & 0x006f) == 0x0023) {
                 printf_debug("0x0f\n");
                 EC_WRITE_U16(domain_pd + control_word, 0x000f);
-                EC_WRITE_S32(domain_pd + target_velocity, TARGET_VELOCITY);
+                if (change_velocity) {
+                    printf_debug("set target_velocity TARGET_VELOCITY\n");
+                    EC_WRITE_S32(domain_pd + target_velocity, TARGET_VELOCITY);
+                }else {
+                    printf_debug("set target_velocity 0\n");
+                    EC_WRITE_S32(domain_pd + target_velocity, 0);
+                }
             }
             
             //operation enabled
             else if( (status & 0x006f) == 0x0027) {
                 printf_debug("0x1f\n");
                 EC_WRITE_U16(domain_pd + control_word, 0x001f);
+                change++;
+            }
+            if(change == 10) {
+                printf_debug("change velocity\n");
+                EC_WRITE_U16(domain_pd + control_word, 0x0007); // stop slaves
+                change_velocity = !change_velocity;
+                change = 0;
             }
         }
 
