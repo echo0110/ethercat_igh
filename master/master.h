@@ -39,7 +39,6 @@
 
 #include <linux/version.h>
 #include <linux/list.h>
-#include <linux/spinlock.h>
 #include <linux/timer.h>
 #include <linux/wait.h>
 #include <linux/kthread.h>
@@ -308,7 +307,6 @@ struct ec_master {
 
     wait_queue_head_t request_queue; /**< Wait queue for external requests
                                        from user space. */
-    spinlock_t lock;
 };
 
 /*****************************************************************************/
