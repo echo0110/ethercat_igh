@@ -15,9 +15,20 @@
 #include "ecrt.h"
 #include "Rockchip_MADHT1505BA1.h"
 
+
+bool app_run = true;
+void sigint_handler(int sig){
+    if(sig == SIGINT){
+        // ctrl+c退出时执行的代码
+        printf("ctrl+c pressed!\n");
+        app_run = false;
+    }
+}
+
 int main(int argc, char **argv) {
 	printf("rk_test start\n");
 	int ret = 0;
+	signal(SIGINT, sigint_handler);
 	MADHT1505BA1_object slave0;
 	ret = MADHT1505BA1_master_init();
 	if(ret == -1) {
@@ -46,8 +57,8 @@ int main(int argc, char **argv) {
 		printf("MADHT1505BA1_slave_start is err\n");
 		return -1;
 	}
-	while(1) {
-		sleep(10);
+	while(app_run) {
+		usleep(100);
 	}
 	MADHT1505BA1_master_deinit();
 	

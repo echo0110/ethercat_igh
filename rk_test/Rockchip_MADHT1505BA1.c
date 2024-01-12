@@ -182,14 +182,15 @@ static void check_domain_state(MADHT1505BA1_object *object)
 }
 
 int MADHT1505BA1_master_init(void) {
-	char* tmp;
+	char* tmp = NULL;
 	printf("rockchip MADHT1505BA1 Motor drive program\n");
 
 	tmp = getenv("RKOCKCHIP_MADHT1505BA1_DEBUG");
-	if (!strcmp("1", tmp)) {
+    if (tmp == NULL) {
+        printf("env RKOCKCHIP_MADHT1505BA1_DEBUG not set\n");
+        debug_mode = 0;
+    }else if (!strcmp("1", tmp)) {
 		debug_mode = 1;
-	}else {
-		debug_mode = 0;
 	}
 
 	master = ecrt_request_master(0);
@@ -286,6 +287,7 @@ int MADHT1505BA1_slaves_activate(MADHT1505BA1_object *object) {
 }
 
 int MADHT1505BA1_master_deinit(void) {
+    run = false;
     ecrt_master_deactivate(master);
     ecrt_release_master(master);
     master = NULL;
