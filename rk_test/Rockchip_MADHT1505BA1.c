@@ -36,8 +36,6 @@ static ec_master_state_t master_state = {};
 int debug_mode = 0;
 bool run = true;
 const struct timespec cycletime = {0, PERIOD_NS};
-int user_velocity = 1124000;
-bool change_velocity = false;
 
 struct itimerval tv;
 struct sigaction sa;
@@ -122,8 +120,10 @@ static int domain_regs_fill_in(MADHT1505BA1_object *object) {
 	object->domain_regs[14] = (ec_pdo_entry_reg_t){};
 
     object->domain_pd = NULL;
-
-	return 0;
+    object->user_velocity = 0;
+    object->change_velocity = false;
+	
+    return 0;
 }
 
 static void check_master_state(void)
@@ -154,12 +154,12 @@ static void check_slave_config_states(MADHT1505BA1_object *object)
     ecrt_slave_config_state(object->sc, &s);
  
     if (s.al_state != object->sc_state.al_state) {
-        printf_debug("slaveDrive: State 0x%02X.\n", s.al_state);
+        printf_debug("slaveDrive %d: State 0x%02X.\n", object->alias, s.al_state);
     }
     if (s.online != object->sc_state.online) {
-        printf_debug("slaveDrive: %s.\n", s.online ? "online" : "offline");
+        printf_debug("slaveDrive %d: %s.\n", object->alias, s.online ? "online" : "offline");
     }
-    printf_debug("slaveDrive: %s  operational.\n", s.operational ? "yes" : "Not ");
+    printf_debug("slaveDrive %d: %s  operational.\n", object->alias, s.operational ? "yes" : "Not ");
  
     object->sc_state = s;
 }
@@ -172,10 +172,10 @@ static void check_domain_state(MADHT1505BA1_object *object)
     ecrt_domain_state(object->domain, &ds);
  
     if (ds.working_counter != object->domain_state.working_counter) {
-        printf_debug("Domain: WC %u.\n", ds.working_counter);
+        printf_debug("Domain %d: WC %u.\n", object->alias, ds.working_counter);
     }
     if (ds.wc_state != object->domain_state.wc_state) {
-        printf_debug("Domain: State %u.\n", ds.wc_state);
+        printf_debug("Domain %d: State %u.\n", object->alias, ds.wc_state);
     }
  
     object->domain_state = ds;
@@ -260,7 +260,7 @@ int MADHT1505BA1_master_activate(void) {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
     if (sigaction(SIGALRM, &sa, 0)) {
-        fprintf(stderr, "Failed to install signal handler!\n");
+        printf("Failed to install signal handler!\n");
         return -1;
     }
  
@@ -270,18 +270,19 @@ int MADHT1505BA1_master_activate(void) {
     tv.it_value.tv_sec = 0;
     tv.it_value.tv_usec = 2000;
     if (setitimer(ITIMER_REAL, &tv, NULL)) {
-        fprintf(stderr, "Failed to start timer: %s\n", strerror(errno));
+        printf("Failed to start timer: %s\n");
         return 1;
     }
     return 0;
 }
 
 int MADHT1505BA1_slaves_activate(MADHT1505BA1_object *object) {
-    printf("domain_pd ...\n");
+    printf("activate slaves %d\n", object->alias);
     if (!(object->domain_pd = ecrt_domain_data(object->domain))) {
         printf("ecrt_domain_data is fail\n");
         return -1;
     }else {
+        printf("activate slaves %d is success\n", object->alias);
         return 0;
     }
 }
@@ -296,7 +297,7 @@ int MADHT1505BA1_master_deinit(void) {
 
 
 void *slave_pthread(void *arg) {
-	struct timespec wakeupTime, time;
+    struct timespec wakeupTime, time;
 	MADHT1505BA1_object *object = (MADHT1505BA1_object *)arg;
 	int counter = 0;
     uint16_t    status;
@@ -306,17 +307,19 @@ void *slave_pthread(void *arg) {
     int maxpri, count;
 	unsigned int user_alarms = 0;
 
+    printf("slave %d bind_cpu\n", object->alias);
     if(thread_bind_cpu(object->cpu_core) == -1) {
         printf("bind cpu core fail\n");
     }
 
     // The scheduling priority is the highest
+    printf("slave %d sched_get_priority_max\n", object->alias);
     maxpri = sched_get_priority_max(SCHED_FIFO);
     if(maxpri == -1) { 
         printf("sched_get_priority_max() failed");
     }
 
-    printf("max priority of SCHED_FIFO is %d\n", maxpri);
+    printf("slave %d max priority of SCHED_FIFO is %d\n", object->alias, maxpri);
     param.sched_priority = maxpri;
     if (sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1) { 
         perror("sched_setscheduler() failed");
@@ -350,7 +353,7 @@ void *slave_pthread(void *arg) {
        		status = EC_READ_U16(object->domain_pd + object->status_word);
        		opmode = EC_READ_U8(object->domain_pd + object->modes_of_operation_display);
        		cur_velocity = EC_READ_S32(object->domain_pd + object->current_velocity);
-       		printf_debug("madht:  act velocity = %d ,  status = 0x%x, opmode = 0x%x\n", cur_velocity,  status, opmode);
+       		printf_debug("slave %d madht:  act velocity = %d ,  status = 0x%x, opmode = 0x%x\n", object->alias, cur_velocity,  status, opmode);
            	if( (status & 0x004f) == 0x0040) {
                	printf_debug("0x06\n");
                	EC_WRITE_U16(object->domain_pd + object->control_word, 0x0006);
@@ -363,17 +366,17 @@ void *slave_pthread(void *arg) {
            	else if( (status & 0x006f) == 0x0023) {
                	printf_debug("0x0f\n");
                	EC_WRITE_U16(object->domain_pd + object->control_word, 0x000f);
-               	EC_WRITE_S32(object->domain_pd + object->target_velocity, user_velocity);
+               	EC_WRITE_S32(object->domain_pd + object->target_velocity, object->user_velocity);
            	}
            	//operation enabled
            	else if( (status & 0x006f) == 0x0027) {
                	printf_debug("0x1f\n");
                	EC_WRITE_U16(object->domain_pd + object->control_word, 0x001f);
            	}
-           	if(change_velocity) {
+           	if(object->change_velocity) {
                	printf_debug("change velocity\n");
                	EC_WRITE_U16(object->domain_pd + object->control_word, 0x0007); // stop slaves
-               	change_velocity = false;
+               	object->change_velocity = false;
            	}
            	
        	}
@@ -392,11 +395,35 @@ void *slave_pthread(void *arg) {
 
 int MADHT1505BA1_slave_start(MADHT1505BA1_object *object) {
 	int err;
-	err = pthread_create(object->thread, NULL, slave_pthread, object);
+    printf("MADHT1505BA1_slave_start: %d\n", object->alias);
+	err = pthread_create(&object->thread, NULL, slave_pthread, object);
 	if(err != 0) {
 		printf("MADHT1505BA1_drive_slave: can't create thread\n");
 		return -1;
 	}else {
 		return 0;
 	}
+}
+
+int MADHT1505BA1_motor_start(MADHT1505BA1_object *object) {
+    uint16_t    status;
+    status = EC_READ_U16(object->domain_pd + object->status_word);
+    if(status == 0x1237) {
+        object->change_velocity = true;
+        object->user_velocity = TARGET_VELOCITY;
+    }else {
+        printf("slave %d not start\n", object->alias);
+    }
+    return 0;
+}
+int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object) {
+    uint16_t    status;
+    status = EC_READ_U16(object->domain_pd + object->status_word);
+    if(status == 0x1237) {
+        object->change_velocity = true;
+        object->user_velocity = 0;
+    }else {
+        printf("slave %d not start\n", object->alias);
+    }
+    return 0;
 }

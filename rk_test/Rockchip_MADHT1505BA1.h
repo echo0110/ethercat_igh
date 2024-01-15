@@ -40,7 +40,10 @@ typedef struct  {
 	ec_pdo_entry_reg_t domain_regs[15];
 
     unsigned int cpu_core;
-    pthread_t *thread;
+    pthread_t thread;
+
+	int user_velocity;
+	bool change_velocity;
 
 }MADHT1505BA1_object;
 
@@ -83,3 +86,6 @@ int MADHT1505BA1_master_activate(void);
 int MADHT1505BA1_slaves_activate(MADHT1505BA1_object *object);
 int MADHT1505BA1_master_deinit(void);
 int MADHT1505BA1_slave_start(MADHT1505BA1_object *object);
+
+int MADHT1505BA1_motor_start(MADHT1505BA1_object *object);
+int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object);
