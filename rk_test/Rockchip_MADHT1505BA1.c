@@ -37,9 +37,9 @@ int debug_mode = 0;
 bool run = true;
 const struct timespec cycletime = {0, PERIOD_NS};
 
-struct itimerval tv;
-struct sigaction sa;
-static unsigned int sig_alarms = 0;
+// struct itimerval tv;
+// struct sigaction sa;
+// static unsigned int sig_alarms = 0;
 //static unsigned int sync_ref_counter = 0;
 
 static void printf_debug(const char* fmt, ...){
@@ -240,14 +240,14 @@ int MADHT1505BA1_slaves_init(MADHT1505BA1_object *object) {
 	return 0;
 }
 
-void signal_handler(int signum) {
-    switch (signum) {
-        case SIGALRM:
-            //printf("timer signal\n");
-            sig_alarms++;
-            break;
-    }
-}
+// void signal_handler(int signum) {
+//     switch (signum) {
+//         case SIGALRM:
+//             //printf("timer signal\n");
+//             sig_alarms++;
+//             break;
+//     }
+// }
 
 int MADHT1505BA1_master_activate(void) {
     printf("Activating master...\n");
@@ -255,24 +255,24 @@ int MADHT1505BA1_master_activate(void) {
         printf("ecrt_master_activate is fail\n");
         return -1;
     }
-    printf("create timer...\n");
-	sa.sa_handler = signal_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    if (sigaction(SIGALRM, &sa, 0)) {
-        printf("Failed to install signal handler!\n");
-        return -1;
-    }
+ //    printf("create timer...\n");
+ //    sa.sa_handler = signal_handler;
+ //    sigemptyset(&sa.sa_mask);
+ //    sa.sa_flags = 0;
+ //    if (sigaction(SIGALRM, &sa, 0)) {
+ //        printf("Failed to install signal handler!\n");
+ //        return -1;
+ //    }
  
-    printf("Starting timer...\n");
-    tv.it_interval.tv_sec = 0;
-    tv.it_interval.tv_usec = 1000000 / FREQUENCY;
-    tv.it_value.tv_sec = 0;
-    tv.it_value.tv_usec = 2000;
-    if (setitimer(ITIMER_REAL, &tv, NULL)) {
-        printf("Failed to start timer: %s\n");
-        return 1;
-    }
+ //    printf("Starting timer...\n");
+ //    tv.it_interval.tv_sec = 0;
+ //    tv.it_interval.tv_usec = 1000000 / FREQUENCY;
+ //    tv.it_value.tv_sec = 0;
+ //    tv.it_value.tv_usec = 2000;
+ //    if (setitimer(ITIMER_REAL, &tv, NULL)) {
+ //        printf("Failed to start timer: %s\n");
+ //        return 1;
+ //    }
     return 0;
 }
 
@@ -296,6 +296,18 @@ int MADHT1505BA1_master_deinit(void) {
 }
 
 
+static long getCurrentTimeMsec() {
+    long msec = 0;
+    char str[20] = {0};
+    struct timeval stuCurrentTime;
+    gettimeofday(&stuCurrentTime, NULL);
+    sprintf(str, "%ld%03ld", stuCurrentTime.tv_sec, (stuCurrentTime.tv_usec)/1000);
+    for(size_t i=0; i<strlen(str); i++) {
+        msec = msec*10 + (str[i]-'0');
+    }
+    return msec;
+}
+
 void *slave_pthread(void *arg) {
     struct timespec wakeupTime, time;
 	MADHT1505BA1_object *object = (MADHT1505BA1_object *)arg;
@@ -305,7 +317,7 @@ void *slave_pthread(void *arg) {
     int32_t     cur_velocity;
 	struct sched_param param;
     int maxpri, count;
-	unsigned int user_alarms = 0;
+	long long user_timer = 0;
 
     printf("slave %d bind_cpu\n", object->alias);
     if(thread_bind_cpu(object->cpu_core) == -1) {
@@ -327,7 +339,7 @@ void *slave_pthread(void *arg) {
     printf("end thread set\n");
 
 	while(run) {
-		user_alarms = sig_alarms;
+		user_timer = getCurrentTimeMsec();
 		wakeupTime = timespec_add(wakeupTime, cycletime);
 		clock_nanosleep(CLOCK_TO_USE, TIMER_ABSTIME, &wakeupTime, NULL);
 
@@ -388,9 +400,8 @@ void *slave_pthread(void *arg) {
         // send process data
         ecrt_domain_queue(object->domain);
         ecrt_master_send(master);
-        while(user_alarms == sig_alarms) { usleep(5);}
+        while((user_timer+1) > getCurrentTimeMsec()) { usleep(5);}
 	}
-    
 }
 
 int MADHT1505BA1_slave_start(MADHT1505BA1_object *object) {

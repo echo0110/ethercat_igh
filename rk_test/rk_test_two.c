@@ -7,19 +7,11 @@
 #include "Rockchip_MADHT1505BA1.h"
 
 bool app_run = true;
-void sigint_handler(int sig){
-    if(sig == SIGINT){
-        // ctrl+c退出时执行的代码
-        printf("ctrl+c pressed!\n");
-        app_run = false;
-    }
-}
 
 int main(int argc, char **argv) {
 	printf("rk_test start\n");
 	int ret = 0;
 	int choice = 0;
-	signal(SIGINT, sigint_handler);
 	MADHT1505BA1_object slave0;
 	MADHT1505BA1_object slave1;
 	ret = MADHT1505BA1_master_init();
@@ -71,31 +63,32 @@ int main(int argc, char **argv) {
 	while(app_run) {
     	printf("1. Motor operation\n");
     	printf("2. Motor stop\n");
-    	printf("\nEnter your choice (1-2): ");
-    	while(choice == 0 && app_run) {
-    		scanf("%d", &choice);
-    		usleep(100);
-    	}
+    	printf("3. exit\n");
+    	printf("\nEnter your choice (1-3): ");
+    	scanf("%d", &choice);
+
     	switch(choice) {
     	    case 1:
     	        MADHT1505BA1_motor_start(&slave0);
     	        MADHT1505BA1_motor_start(&slave1);
-    	        choice = 0;
     	        break;
     	        
     	    case 2:
     	        MADHT1505BA1_motor_stop(&slave0);
     	        MADHT1505BA1_motor_stop(&slave1);
-    	        choice = 0;
     	        break;
-    	       	        
+    	    
+    	    case 3:
+    	    	printf("rk_test end\n");
+    	    	MADHT1505BA1_master_deinit();   	        
+    	    	return 0;
+
     	    default:
     	        printf("Invalid choice!\n");
     	        break;
     	}
+    	usleep(100);
 	}
-
-	MADHT1505BA1_master_deinit();
 	
 	return 0;
 }
