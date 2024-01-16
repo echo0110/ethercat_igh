@@ -268,19 +268,6 @@ int MADHT1505BA1_master_deinit(void) {
     printf("MADHT1505BA1_master_deinit\n");
 }
 
-
-static long getCurrentTimeMsec() {
-    long msec = 0;
-    char str[20] = {0};
-    struct timeval stuCurrentTime;
-    gettimeofday(&stuCurrentTime, NULL);
-    sprintf(str, "%ld%03ld", stuCurrentTime.tv_sec, (stuCurrentTime.tv_usec)/1000);
-    for(size_t i=0; i<strlen(str); i++) {
-        msec = msec*10 + (str[i]-'0');
-    }
-    return msec;
-}
-
 void *slave_pthread(void *arg) {
     struct timespec wakeupTime, time;
 	MADHT1505BA1_object *object = (MADHT1505BA1_object *)arg;
@@ -290,7 +277,6 @@ void *slave_pthread(void *arg) {
     int32_t     cur_velocity;
 	struct sched_param param;
     int maxpri, count;
-	long long user_timer = 0;
 
     printf("slave %d bind_cpu\n", object->alias);
     if(thread_bind_cpu(object->cpu_core) == -1) {
@@ -311,9 +297,10 @@ void *slave_pthread(void *arg) {
     }
     printf("end thread set\n");
 
+    clock_gettime(CLOCK_TO_USE, &wakeupTime);
 	while(run) {
-		user_timer = getCurrentTimeMsec();
-		wakeupTime = timespec_add(wakeupTime, cycletime);
+		
+        wakeupTime = timespec_add(wakeupTime, cycletime);
 		clock_nanosleep(CLOCK_TO_USE, TIMER_ABSTIME, &wakeupTime, NULL);
 
         // Write application time to master
@@ -373,7 +360,6 @@ void *slave_pthread(void *arg) {
         // send process data
         ecrt_domain_queue(object->domain);
         ecrt_master_send(master);
-        while((user_timer+1) > getCurrentTimeMsec()) { usleep(5);}
 	}
 }
 
