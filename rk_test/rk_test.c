@@ -8,11 +8,24 @@
 
 bool app_run = true;
 
+void sigint_handler(int sig){
+    if(sig == SIGINT){
+        // ctrl+c退出时执行的代码
+        printf("ctrl+c pressed!\n");
+        app_run = false;
+    	printf("rk_test end\n");
+    	MADHT1505BA1_master_deinit(); 
+    }
+}
+
 int main(int argc, char **argv) {
 	printf("rk_test start\n");
 	int ret = 0;
 	int choice = 0;
 	MADHT1505BA1_object slave0;
+
+	signal(SIGINT, sigint_handler);
+
 	ret = MADHT1505BA1_master_init();
 	if(ret == -1) {
 		printf("MADHT1505BA1_master_init is err\n");
@@ -40,6 +53,12 @@ int main(int argc, char **argv) {
 		printf("MADHT1505BA1_slave_start0 is err\n");
 		return -1;
 	}
+
+	printf("Please wait while checking whether the motor is operational...\n");
+	while((MADHT1505BA1_check_motor(&slave0) == -1)) {
+		sleep(1);
+	}
+	printf("motor is ok\n");
 
 	while(app_run) {
     	printf("1. Motor operation\n");

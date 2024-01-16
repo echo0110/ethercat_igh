@@ -86,6 +86,6 @@ int MADHT1505BA1_master_activate(void);
 int MADHT1505BA1_slaves_activate(MADHT1505BA1_object *object);
 int MADHT1505BA1_master_deinit(void);
 int MADHT1505BA1_slave_start(MADHT1505BA1_object *object);
-
+int MADHT1505BA1_check_motor(MADHT1505BA1_object *object); // 1 is true  -1 is false
 int MADHT1505BA1_motor_start(MADHT1505BA1_object *object);
 int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object);

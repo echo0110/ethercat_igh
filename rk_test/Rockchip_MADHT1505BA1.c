@@ -240,39 +240,12 @@ int MADHT1505BA1_slaves_init(MADHT1505BA1_object *object) {
 	return 0;
 }
 
-// void signal_handler(int signum) {
-//     switch (signum) {
-//         case SIGALRM:
-//             //printf("timer signal\n");
-//             sig_alarms++;
-//             break;
-//     }
-// }
-
 int MADHT1505BA1_master_activate(void) {
     printf("Activating master...\n");
     if (ecrt_master_activate(master)) {
         printf("ecrt_master_activate is fail\n");
         return -1;
     }
- //    printf("create timer...\n");
- //    sa.sa_handler = signal_handler;
- //    sigemptyset(&sa.sa_mask);
- //    sa.sa_flags = 0;
- //    if (sigaction(SIGALRM, &sa, 0)) {
- //        printf("Failed to install signal handler!\n");
- //        return -1;
- //    }
- 
- //    printf("Starting timer...\n");
- //    tv.it_interval.tv_sec = 0;
- //    tv.it_interval.tv_usec = 1000000 / FREQUENCY;
- //    tv.it_value.tv_sec = 0;
- //    tv.it_value.tv_usec = 2000;
- //    if (setitimer(ITIMER_REAL, &tv, NULL)) {
- //        printf("Failed to start timer: %s\n");
- //        return 1;
- //    }
     return 0;
 }
 
@@ -427,6 +400,7 @@ int MADHT1505BA1_motor_start(MADHT1505BA1_object *object) {
     }
     return 0;
 }
+
 int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object) {
     uint16_t    status;
     status = EC_READ_U16(object->domain_pd + object->status_word);
@@ -437,4 +411,14 @@ int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object) {
         printf("slave %d not start\n", object->alias);
     }
     return 0;
+}
+
+int MADHT1505BA1_check_motor(MADHT1505BA1_object *object) {
+    uint16_t    status;
+    status = EC_READ_U16(object->domain_pd + object->status_word);
+    if(status != 0x1237) {
+        return -1;
+    }else {
+        return 1;
+    }
 }
