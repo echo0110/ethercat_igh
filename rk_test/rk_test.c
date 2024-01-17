@@ -1,8 +1,10 @@
+#define _GNU_SOURCE
 #include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdbool.h>
-
+#include <sched.h>
+#include <pthread.h>
 #include "ecrt.h"
 #include "Rockchip_MADHT1505BA1.h"
 
@@ -18,21 +20,69 @@ void sigint_handler(int sig){
     }
 }
 
+static int thread_bind_cpu(int target_cpu)
+{
+    cpu_set_t mask;
+    int cpu_num = sysconf(_SC_NPROCESSORS_CONF);
+    int i;
+
+    if (target_cpu >= cpu_num)
+        return -1;
+
+    CPU_ZERO(&mask);
+    CPU_SET(target_cpu, &mask);
+
+    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0)
+        perror("pthread_setaffinity_np");
+
+    if (pthread_getaffinity_np(pthread_self(), sizeof(mask), &mask) < 0)
+        perror("pthread_getaffinity_np");
+
+    printf("Thread(%ld) bound to cpu:", gettid());
+    for (i = 0; i < CPU_SETSIZE; i++) {
+        if (CPU_ISSET(i, &mask)) {
+            printf(" %d", i);
+            break;    
+        }
+    }
+    printf("\n");
+
+    return i >= cpu_num ? -1 : i;
+}
+
 int main(int argc, char **argv) {
 	printf("rk_test start\n");
 	int ret = 0;
 	int choice = 0;
+	int maxpri;
+	struct sched_param param;
+
 	MADHT1505BA1_object slave0;
 
 	signal(SIGINT, sigint_handler);
 
-	ret = MADHT1505BA1_master_init();
+    if(thread_bind_cpu(1) == -1) {
+        printf("bind cpu core fail\n");
+    }
+
+    // The scheduling priority is the highest
+    maxpri = sched_get_priority_max(SCHED_FIFO);
+    if(maxpri == -1) { 
+        printf("sched_get_priority_max() failed");
+    }
+
+    param.sched_priority = maxpri;
+    if (sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1) { 
+        perror("sched_setscheduler() failed");
+    }
+
+	ret = MADHT1505BA1_master_init(3); //bind cpu core 3
 	if(ret == -1) {
 		printf("MADHT1505BA1_master_init is err\n");
 	}
 	slave0.alias = 0;
 	slave0.position = 0;
-	slave0.cpu_core = 3;
+
 	ret = MADHT1505BA1_slaves_init(&slave0);
 	if(ret == -1) {
 		printf("MADHT1505BA1_slaves_init0 is err\n");
@@ -48,7 +98,7 @@ int main(int argc, char **argv) {
 		printf("MADHT1505BA1_slaves_activate0 is err\n");
 		return -1;
 	}
-	ret = MADHT1505BA1_slave_start(&slave0);
+	ret = MADHT1505BA1_slave_start(1, &slave0);
 	if(ret == -1) {
 		printf("MADHT1505BA1_slave_start0 is err\n");
 		return -1;

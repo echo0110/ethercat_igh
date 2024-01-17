@@ -39,11 +39,12 @@ typedef struct  {
 	uint8_t *domain_pd;
 	ec_pdo_entry_reg_t domain_regs[15];
 
-    unsigned int cpu_core;
-    pthread_t thread;
+    uint16_t    status;
+    int8_t      opmode;
+    int32_t     cur_velocity;
 
-	int user_velocity;
-	bool change_velocity;
+	int  		user_velocity;
+	bool 		change_velocity;
 
 }MADHT1505BA1_object;
 
@@ -80,12 +81,12 @@ ec_sync_info_t slave_0_syncs[] = {
 
 /*****************************************************************************/
 
-int MADHT1505BA1_master_init(void);
+int MADHT1505BA1_master_init(int bind_core);
 int MADHT1505BA1_slaves_init(MADHT1505BA1_object *object);
 int MADHT1505BA1_master_activate(void);
 int MADHT1505BA1_slaves_activate(MADHT1505BA1_object *object);
 int MADHT1505BA1_master_deinit(void);
-int MADHT1505BA1_slave_start(MADHT1505BA1_object *object);
+int MADHT1505BA1_slave_start(int cnt, ...);
 int MADHT1505BA1_check_motor(MADHT1505BA1_object *object); // 1 is true  -1 is false
 int MADHT1505BA1_motor_start(MADHT1505BA1_object *object);
 int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object);

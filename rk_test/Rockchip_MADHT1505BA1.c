@@ -29,6 +29,7 @@
         (B).tv_nsec - (A).tv_nsec)
 
 #define TIMESPEC2NS(T) ((uint64_t) (T).tv_sec * NSEC_PER_SEC + (T).tv_nsec)
+#define SLAVES_NUM_MAX 10
 
 static ec_master_t *master = NULL;
 static ec_master_state_t master_state = {};
@@ -36,11 +37,10 @@ static ec_master_state_t master_state = {};
 int debug_mode = 0;
 bool run = true;
 const struct timespec cycletime = {0, PERIOD_NS};
-
-// struct itimerval tv;
-// struct sigaction sa;
-// static unsigned int sig_alarms = 0;
-//static unsigned int sync_ref_counter = 0;
+int slaves_cnt;
+pthread_t thread;
+int cpu_core;
+MADHT1505BA1_object* slaves_group[SLAVES_NUM_MAX];
 
 static void printf_debug(const char* fmt, ...){
 	if (debug_mode == 1) {
@@ -181,7 +181,7 @@ static void check_domain_state(MADHT1505BA1_object *object)
     object->domain_state = ds;
 }
 
-int MADHT1505BA1_master_init(void) {
+int MADHT1505BA1_master_init(int bind_core) {
 	char* tmp = NULL;
 	printf("rockchip MADHT1505BA1 Motor drive program\n");
 
@@ -192,7 +192,7 @@ int MADHT1505BA1_master_init(void) {
     }else if (!strcmp("1", tmp)) {
 		debug_mode = 1;
 	}
-
+    cpu_core = bind_core;
 	master = ecrt_request_master(0);
     if (!master) {
 		printf("ecrt_request_master is err\n");
@@ -270,27 +270,22 @@ int MADHT1505BA1_master_deinit(void) {
 
 void *slave_pthread(void *arg) {
     struct timespec wakeupTime, time;
-	MADHT1505BA1_object *object = (MADHT1505BA1_object *)arg;
+	//MADHT1505BA1_object **object = (MADHT1505BA1_object **)arg;
 	int counter = 0;
-    uint16_t    status;
-    int8_t      opmode;
-    int32_t     cur_velocity;
 	struct sched_param param;
-    int maxpri, count;
+    int maxpri, count, i;
 
-    printf("slave %d bind_cpu\n", object->alias);
-    if(thread_bind_cpu(object->cpu_core) == -1) {
+    printf("slave_pthread bind_cpu\n");
+    if(thread_bind_cpu(cpu_core) == -1) {
         printf("bind cpu core fail\n");
     }
 
     // The scheduling priority is the highest
-    printf("slave %d sched_get_priority_max\n", object->alias);
     maxpri = sched_get_priority_max(SCHED_FIFO);
     if(maxpri == -1) { 
         printf("sched_get_priority_max() failed");
     }
 
-    printf("slave %d max priority of SCHED_FIFO is %d\n", object->alias, maxpri);
     param.sched_priority = maxpri;
     if (sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1) { 
         perror("sched_setscheduler() failed");
@@ -312,45 +307,48 @@ void *slave_pthread(void *arg) {
         
         /*Receive process data*/
         ecrt_master_receive(master);
-        ecrt_domain_process(object->domain);
-        // check process data state (optional)
-       	check_domain_state(object);
+        for (i = 0; i < slaves_cnt; i++) {
+            ecrt_domain_process(slaves_group[i]->domain);
+            // check process data state (optional)
+            check_domain_state(slaves_group[i]);
+        }
        	if(counter) {
        		counter--;
        	}else {
        		counter = FREQUENCY;
        		check_master_state();
-       		check_slave_config_states(object);
-       		EC_WRITE_U16(object->domain_pd + object->control_word, 0x80);
-       		status = EC_READ_U16(object->domain_pd + object->status_word);
-       		opmode = EC_READ_U8(object->domain_pd + object->modes_of_operation_display);
-       		cur_velocity = EC_READ_S32(object->domain_pd + object->current_velocity);
-       		printf_debug("slave %d madht:  act velocity = %d ,  status = 0x%x, opmode = 0x%x\n", object->alias, cur_velocity,  status, opmode);
-           	if( (status & 0x004f) == 0x0040) {
-               	printf_debug("0x06\n");
-               	EC_WRITE_U16(object->domain_pd + object->control_word, 0x0006);
-               	EC_WRITE_U8(object->domain_pd + object->modes_of_operation, 9);
-           	}
-           	else if( (status & 0x006f) == 0x0021) {
-               	printf_debug("0x07\n");
-               	EC_WRITE_U16(object->domain_pd + object->control_word, 0x0007);
-           	}
-           	else if( (status & 0x006f) == 0x0023) {
-               	printf_debug("0x0f\n");
-               	EC_WRITE_U16(object->domain_pd + object->control_word, 0x000f);
-               	EC_WRITE_S32(object->domain_pd + object->target_velocity, object->user_velocity);
-           	}
-           	//operation enabled
-           	else if( (status & 0x006f) == 0x0027) {
-               	printf_debug("0x1f\n");
-               	EC_WRITE_U16(object->domain_pd + object->control_word, 0x001f);
-           	}
-           	if(object->change_velocity) {
-               	printf_debug("change velocity\n");
-               	EC_WRITE_U16(object->domain_pd + object->control_word, 0x0007); // stop slaves
-               	object->change_velocity = false;
-           	}
-           	
+       		for (i = 0; i < slaves_cnt; i++) {
+                check_slave_config_states(slaves_group[i]);
+                EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x80);
+                slaves_group[i]->status = EC_READ_U16(slaves_group[i]->domain_pd + slaves_group[i]->status_word);
+                slaves_group[i]->opmode = EC_READ_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation_display);
+                slaves_group[i]->cur_velocity = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->current_velocity);
+                printf_debug("slave %d madht:  act velocity = %d ,  status = 0x%x, opmode = 0x%x\n", slaves_group[i]->alias, slaves_group[i]->cur_velocity,  slaves_group[i]->status, slaves_group[i]->opmode);
+                if( (slaves_group[i]->status & 0x004f) == 0x0040) {
+                    printf_debug("0x06\n");
+                    EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0006);
+                    EC_WRITE_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation, 9);
+                }
+                else if( (slaves_group[i]->status & 0x006f) == 0x0021) {
+                    printf_debug("0x07\n");
+                    EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0007);
+                }
+                else if( (slaves_group[i]->status & 0x006f) == 0x0023) {
+                    printf_debug("0x0f\n");
+                    EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x000f);
+                    EC_WRITE_S32(slaves_group[i]->domain_pd + slaves_group[i]->target_velocity, slaves_group[i]->user_velocity);
+                }
+                //operation enabled
+                else if( (slaves_group[i]->status & 0x006f) == 0x0027) {
+                    printf_debug("0x1f\n");
+                    EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x001f);
+                }
+                if(slaves_group[i]->change_velocity) {
+                    printf_debug("change velocity\n");
+                    EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0007); // stop slaves
+                    slaves_group[i]->change_velocity = false;
+                }
+            }        	
        	}
 
         clock_gettime(CLOCK_TO_USE, &time);
@@ -358,15 +356,29 @@ void *slave_pthread(void *arg) {
 
         ecrt_master_sync_slave_clocks(master);
         // send process data
-        ecrt_domain_queue(object->domain);
+        for (i = 0; i < slaves_cnt; i++) {
+            ecrt_domain_queue(slaves_group[i]->domain);
+        }
         ecrt_master_send(master);
 	}
 }
 
-int MADHT1505BA1_slave_start(MADHT1505BA1_object *object) {
+int MADHT1505BA1_slave_start(int cnt, ...) {
 	int err;
-    printf("MADHT1505BA1_slave_start: %d\n", object->alias);
-	err = pthread_create(&object->thread, NULL, slave_pthread, object);
+    int i;
+    __builtin_va_list vaptr;
+    __builtin_va_start(vaptr, cnt);
+    if (cnt > master_state.slaves_responding) {
+        printf("The number of slave stations set by the user is greater than the number of identified slave stations \n");
+        return -1;
+    }
+    
+    slaves_cnt = cnt;
+
+    for (i = 0; i < cnt; i++) {
+        slaves_group[i] = __builtin_va_arg(vaptr, MADHT1505BA1_object *);
+    }
+	err = pthread_create(&thread, NULL, slave_pthread, NULL);
 	if(err != 0) {
 		printf("MADHT1505BA1_drive_slave: can't create thread\n");
 		return -1;
