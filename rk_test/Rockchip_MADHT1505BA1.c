@@ -417,6 +417,6 @@ int MADHT1505BA1_check_motor(MADHT1505BA1_object *object) {
     if(status != 0x1237) {
         return -1;
     }else {
-        return 1;
+        return object->user_velocity;
     }
 }
