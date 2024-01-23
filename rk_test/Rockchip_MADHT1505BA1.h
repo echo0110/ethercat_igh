@@ -1,3 +1,4 @@
+#include "ecrt.h" 
 /*****************************************************************************/
  
 /* Master 0, Slave 0, "MADHT1505BA1"
@@ -90,3 +91,7 @@ int MADHT1505BA1_slave_start(int cnt, ...);
 int MADHT1505BA1_check_motor(MADHT1505BA1_object *object); // 1 is true  -1 is false
 int MADHT1505BA1_motor_start(MADHT1505BA1_object *object);
 int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object);
+uint32_t MADHT1505BA1_time_statistics_latency_min_ns(void);
+uint32_t MADHT1505BA1_time_statistics_latency_max_ns(void);
+uint32_t MADHT1505BA1_time_statistics_period_min_ns(void);
+uint32_t MADHT1505BA1_time_statistics_period_max_ns(void);

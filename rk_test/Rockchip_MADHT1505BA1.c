@@ -13,7 +13,6 @@
 #include <sched.h>
 #include <pthread.h>
 #include <stdarg.h>
-#include "ecrt.h"
 #include "Rockchip_MADHT1505BA1.h"
 
 #define FREQUENCY 1000
@@ -30,6 +29,13 @@
 
 #define TIMESPEC2NS(T) ((uint64_t) (T).tv_sec * NSEC_PER_SEC + (T).tv_nsec)
 #define SLAVES_NUM_MAX 10
+
+// Time statistics
+uint32_t  latency_min_ns = 0, latency_max_ns = 0,
+          period_min_ns = 0, period_max_ns = 0,
+          exec_min_ns = 0, exec_max_ns = 0;
+static int clean_cycle = 0;
+// Time statistics
 
 static ec_master_t *master = NULL;
 static ec_master_state_t master_state = {};
@@ -292,6 +298,17 @@ void *slave_pthread(void *arg) {
     }
     printf("end thread set\n");
 
+    // Time statistics
+    struct timespec startTime, endTime, lastStartTime = {};
+    uint32_t period_ns = 0, exec_ns = 0, latency_ns = 0;
+             
+    period_max_ns = 0;
+    period_min_ns = 0xffffffff;
+    latency_max_ns = 0;
+    latency_min_ns = 0xffffffff;
+    clock_gettime(CLOCK_TO_USE, &lastStartTime);
+    // Time statistics
+
     clock_gettime(CLOCK_TO_USE, &wakeupTime);
 	while(run) {
 		
@@ -360,6 +377,33 @@ void *slave_pthread(void *arg) {
             ecrt_domain_queue(slaves_group[i]->domain);
         }
         ecrt_master_send(master);
+        
+        // Time statistics
+        clock_gettime(CLOCK_TO_USE, &startTime);
+        latency_ns = DIFF_NS(wakeupTime, startTime);
+        period_ns = DIFF_NS(lastStartTime, startTime);
+        if (clean_cycle >= (12 * 60 * 60 * 1000)) { // 12 hour clean
+            clean_cycle = 0;
+            period_max_ns = 0;
+            period_min_ns = 0xffffffff;
+            latency_max_ns = 0;
+            latency_min_ns = 0xffffffff;
+        }
+        if (latency_ns > latency_max_ns) {
+            latency_max_ns = latency_ns;
+        }
+        if (latency_ns < latency_min_ns) {
+            latency_min_ns = latency_ns;
+        }
+        if (period_ns > period_max_ns) {
+            period_max_ns = period_ns;
+        }
+        if (period_ns < period_min_ns) {
+            period_min_ns = period_ns;
+        }
+        clean_cycle++;
+        lastStartTime = startTime;
+        // Time statistics
 	}
 }
 
@@ -368,6 +412,7 @@ int MADHT1505BA1_slave_start(int cnt, ...) {
     int i;
     __builtin_va_list vaptr;
     __builtin_va_start(vaptr, cnt);
+    run = true;
     if (cnt > master_state.slaves_responding) {
         printf("The number of slave stations set by the user is greater than the number of identified slave stations \n");
         return -1;
@@ -417,6 +462,22 @@ int MADHT1505BA1_check_motor(MADHT1505BA1_object *object) {
     if(status != 0x1237) {
         return -1;
     }else {
-        return object->user_velocity;
+        return object->cur_velocity;
     }
+}
+
+uint32_t MADHT1505BA1_time_statistics_latency_min_ns(void) {
+    return latency_min_ns;
+}
+
+uint32_t MADHT1505BA1_time_statistics_latency_max_ns(void) {
+    return latency_max_ns;
+}
+
+uint32_t MADHT1505BA1_time_statistics_period_min_ns(void) {
+    return period_min_ns;
+}
+
+uint32_t MADHT1505BA1_time_statistics_period_max_ns(void) {
+    return period_max_ns;
 }

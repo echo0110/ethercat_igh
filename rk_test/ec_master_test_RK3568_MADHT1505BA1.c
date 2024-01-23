@@ -23,7 +23,7 @@
 // #define FREQUENCY 250
 #define FREQUENCY 1000
 #define CLOCK_TO_USE CLOCK_MONOTONIC
-#define MEASURE_TIMING
+#define MEASURE_TIMING  1
 #define TARGET_VELOCITY        1124000 /*target velocity*/
 
 #define NSEC_PER_SEC (1000000000L)
@@ -308,7 +308,7 @@ void check_domain_state(void)
 }
  
 /*****************************************************************************/
-
+static int clean_cycle = 0;//5 * 60 * FREQUENCY;
 void cyclic_task_velocity_mode()
 {
     static unsigned int timeout_error = 0;
@@ -316,7 +316,20 @@ void cyclic_task_velocity_mode()
     uint16_t    status;
     int8_t      opmode;
     int32_t     cur_velocity;
+    bool        print = false;
 
+    struct timespec startTime, endTime, lastStartTime = {};
+    uint32_t period_ns = 0, exec_ns = 0, latency_ns = 0,
+             latency_min_ns = 0, latency_max_ns = 0,
+             period_min_ns = 0, period_max_ns = 0,
+             exec_min_ns = 0, exec_max_ns = 0;
+             
+    period_max_ns = 0;
+    period_min_ns = 0xffffffff;
+    latency_max_ns = 0;
+    latency_min_ns = 0xffffffff;
+    
+    clock_gettime(CLOCK_TO_USE, &lastStartTime);
     clock_gettime(CLOCK_TO_USE, &wakeupTime);
     while(app_run) {
         wakeupTime = timespec_add(wakeupTime, cycletime);
@@ -381,6 +394,56 @@ void cyclic_task_velocity_mode()
         // send process data
         ecrt_domain_queue(domain);
         ecrt_master_send(master);
+
+        clock_gettime(CLOCK_TO_USE, &startTime);
+        latency_ns = DIFF_NS(wakeupTime, startTime);
+        period_ns = DIFF_NS(lastStartTime, startTime);
+        //exec_ns = DIFF_NS(lastStartTime, endTime);
+    /* clean */
+        if (clean_cycle >= (5 * 60 * 1000)) {
+            clean_cycle = 0;
+            period_max_ns = 0;
+            period_min_ns = 0xffffffff;
+            latency_max_ns = 0;
+            latency_min_ns = 0xffffffff;
+        }
+
+
+        if (latency_ns > latency_max_ns) {
+            latency_max_ns = latency_ns;
+        }
+        if (latency_ns < latency_min_ns) {
+            latency_min_ns = latency_ns;
+        }
+
+        if (period_ns > period_max_ns) {
+            period_max_ns = period_ns;
+            print = true;
+        }
+        if (period_ns < period_min_ns) {
+            period_min_ns = period_ns;
+            print = true;
+        }
+
+        clean_cycle++;
+        lastStartTime = startTime;
+        // output timing stats
+        if (print) {
+            printf("period     %10u ... %10u\n",
+                    period_min_ns, period_max_ns);
+        //printf("exec       %10u ... %10u\n",
+        //        exec_min_ns, exec_max_ns);
+        printf("latency    %10u ... %10u\n",
+                latency_min_ns, latency_max_ns);
+        }
+        //period_max_ns = 0;
+        //period_min_ns = 0xffffffff;
+        //exec_max_ns = 0;
+        //exec_min_ns = 0xffffffff;
+        //latency_max_ns = 0;
+        //latency_min_ns = 0xffffffff;
+        print = false;
+
     }
 }
  
