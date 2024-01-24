@@ -340,7 +340,8 @@ void *slave_pthread(void *arg) {
                 slaves_group[i]->status = EC_READ_U16(slaves_group[i]->domain_pd + slaves_group[i]->status_word);
                 slaves_group[i]->opmode = EC_READ_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation_display);
                 slaves_group[i]->cur_velocity = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->current_velocity);
-                printf_debug("slave %d madht:  act velocity = %d ,  status = 0x%x, opmode = 0x%x\n", slaves_group[i]->alias, slaves_group[i]->cur_velocity,  slaves_group[i]->status, slaves_group[i]->opmode);
+                slaves_group[i]->position_actual_value = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->position_actual_value);
+                printf_debug("slave %d madht:  act velocity = %d ,act position = %d,  status = 0x%x, opmode = 0x%x\n", slaves_group[i]->alias, slaves_group[i]->cur_velocity, slaves_group[i]->position_actual_value, slaves_group[i]->status, slaves_group[i]->opmode);
                 if( (slaves_group[i]->status & 0x004f) == 0x0040) {
                     printf_debug("0x06\n");
                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0006);
