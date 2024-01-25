@@ -15,6 +15,7 @@
 #include <stdarg.h>
 #include "Rockchip_MADHT1505BA1.h"
 
+#define POSITION_MAX 2147483647   
 #define FREQUENCY 1000
 #define CLOCK_TO_USE CLOCK_MONOTONIC
 #define MEASURE_TIMING
@@ -280,6 +281,7 @@ void *slave_pthread(void *arg) {
 	int counter = 0;
 	struct sched_param param;
     int maxpri, count, i;
+    int curpos = 0;
 
     printf("slave_pthread bind_cpu\n");
     if(thread_bind_cpu(cpu_core) == -1) {
@@ -340,8 +342,14 @@ void *slave_pthread(void *arg) {
                 slaves_group[i]->status = EC_READ_U16(slaves_group[i]->domain_pd + slaves_group[i]->status_word);
                 slaves_group[i]->opmode = EC_READ_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation_display);
                 slaves_group[i]->cur_velocity = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->current_velocity);
-                slaves_group[i]->position_actual_value = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->position_actual_value);
-                printf_debug("slave %d madht:  act velocity = %d ,act position = %d,  status = 0x%x, opmode = 0x%x\n", slaves_group[i]->alias, slaves_group[i]->cur_velocity, slaves_group[i]->position_actual_value, slaves_group[i]->status, slaves_group[i]->opmode);
+                
+                curpos = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->position_actual_value);
+                if(curpos < 0) {
+                    curpos = POSITION_MAX - abs(curpos);
+                }
+                slaves_group[i]->curpos = curpos;
+                
+                printf_debug("slave %d madht:  act velocity = %d ,act position = %d,  status = 0x%x, opmode = 0x%x\n", slaves_group[i]->alias, slaves_group[i]->cur_velocity, slaves_group[i]->curpos, slaves_group[i]->status, slaves_group[i]->opmode);
                 if( (slaves_group[i]->status & 0x004f) == 0x0040) {
                     printf_debug("0x06\n");
                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0006);
@@ -481,4 +489,8 @@ uint32_t MADHT1505BA1_time_statistics_period_min_ns(void) {
 
 uint32_t MADHT1505BA1_time_statistics_period_max_ns(void) {
     return period_max_ns;
+}
+
+int MADHT1505BA1_run_position_acquisition(MADHT1505BA1_object *object) {
+    return object->curpos;
 }

@@ -43,6 +43,7 @@ typedef struct  {
     uint16_t    status;
     int8_t      opmode;
     int32_t     cur_velocity;
+    int         curpos;
 
 	int  		user_velocity;
 	bool 		change_velocity;
@@ -95,3 +96,4 @@ uint32_t MADHT1505BA1_time_statistics_latency_min_ns(void);
 uint32_t MADHT1505BA1_time_statistics_latency_max_ns(void);
 uint32_t MADHT1505BA1_time_statistics_period_min_ns(void);
 uint32_t MADHT1505BA1_time_statistics_period_max_ns(void);
+int MADHT1505BA1_run_position_acquisition(MADHT1505BA1_object *object);
