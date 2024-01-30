@@ -127,7 +127,7 @@ int ec_device_init(
 #endif
 
     for (i = 0; i < EC_TX_RING_SIZE; i++) {
-        if (!(device->tx_skb[i] = dev_alloc_skb(ETH_FRAME_LEN))) {
+        if (!(device->tx_skb[i] = __netdev_alloc_skb(NULL, ETH_FRAME_LEN, GFP_ATOMIC | GFP_DMA32))) {
             EC_MASTER_ERR(master, "Error allocating device socket buffer!\n");
             ret = -ENOMEM;
             goto out_tx_ring;
