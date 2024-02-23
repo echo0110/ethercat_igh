@@ -9,6 +9,7 @@
 #include "Rockchip_MADHT1505BA1.h"
 
 bool app_run = true;
+int  velocity = 1124000;
 
 void sigint_handler(int sig){
     if(sig == SIGINT){
@@ -119,11 +120,11 @@ int main(int argc, char **argv) {
 
     	switch(choice) {
     	    case 1:
-    	        MADHT1505BA1_motor_start(&slave0);
+				MADHT1505BA1_motor_set_position_run(100000, &slave0);
     	        break;
     	        
     	    case 2:
-    	        MADHT1505BA1_motor_stop(&slave0);
+    	        MADHT1505BA1_position_reset(&slave0);
     	        break;
     	    
     	    case 3:

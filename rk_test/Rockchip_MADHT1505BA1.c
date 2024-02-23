@@ -15,15 +15,16 @@
 #include <stdarg.h>
 #include "Rockchip_MADHT1505BA1.h"
 
-#define POSITION_MAX 2147483647   
+#define POSITION_MAX 2000000000UL   
 #define FREQUENCY 1000
 #define CLOCK_TO_USE CLOCK_MONOTONIC
 #define MEASURE_TIMING
-#define TARGET_VELOCITY        1124000 /*target velocity*/
+#define TARGET_VELOCITY        1124000 /*target velocity*/ 
 
 #define NSEC_PER_SEC (1000000000L)
 #define PERIOD_NS (NSEC_PER_SEC / FREQUENCY)                                                   
 #define SHIFT_NS  (NSEC_PER_SEC / FREQUENCY /4)
+#define STATUS_SERVO_ENABLE_BIT  (0x04)
 
 #define DIFF_NS(A, B) (((B).tv_sec - (A).tv_sec) * NSEC_PER_SEC + \
         (B).tv_nsec - (A).tv_nsec)
@@ -124,11 +125,14 @@ static int domain_regs_fill_in(MADHT1505BA1_object *object) {
 	object->domain_regs[11] = (ec_pdo_entry_reg_t){object->alias, object->position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x60fd, 0, &(object->digital_inputs)};
 	object->domain_regs[12] = (ec_pdo_entry_reg_t){object->alias, object->position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x606c, 0, &(object->current_velocity)};
 	object->domain_regs[13] = (ec_pdo_entry_reg_t){object->alias, object->position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x60ff, 0, &(object->target_velocity)};
-	object->domain_regs[14] = (ec_pdo_entry_reg_t){};
+    object->domain_regs[14] = (ec_pdo_entry_reg_t){object->alias, object->position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x6081, 0, &(object->profile_velocity)};
+    object->domain_regs[15] = (ec_pdo_entry_reg_t){object->alias, object->position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x6082, 0, &(object->end_velocity)};
+    object->domain_regs[16] = (ec_pdo_entry_reg_t){object->alias, object->position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x6083, 0, &(object->profile_acceleration)};
+    object->domain_regs[17] = (ec_pdo_entry_reg_t){object->alias, object->position, MADHT1505BA1_vendor, MADHT1505BA1_product_code, 0x6084, 0, &(object->end_deceleration)};
+	object->domain_regs[18] = (ec_pdo_entry_reg_t){};
 
     object->domain_pd = NULL;
-    object->user_velocity = 0;
-    object->change_velocity = false;
+    object->change_pos = false;
 	
     return 0;
 }
@@ -243,7 +247,7 @@ int MADHT1505BA1_slaves_init(MADHT1505BA1_object *object) {
         return -1;
     };
 
-    ecrt_slave_config_dc(object->sc, 0x300, PERIOD_NS, 0, 0, 0);
+    //ecrt_slave_config_dc(object->sc, 0x300, PERIOD_NS, 0, 0, 0);
 	return 0;
 }
 
@@ -275,11 +279,154 @@ int MADHT1505BA1_master_deinit(void) {
     printf("MADHT1505BA1_master_deinit\n");
 }
 
-void *slave_pthread(void *arg) {
+// void *slave_velocity_mode_pthread(void *arg) {
+//     struct timespec wakeupTime, time;
+// 	//MADHT1505BA1_object **object = (MADHT1505BA1_object **)arg;
+// 	int counter = 0;
+// 	struct sched_param param;
+//     int maxpri, count, i;
+//     int curpos = 0;
+
+//     printf("slave_pthread bind_cpu\n");
+//     if(thread_bind_cpu(cpu_core) == -1) {
+//         printf("bind cpu core fail\n");
+//     }
+
+//     // The scheduling priority is the highest
+//     maxpri = sched_get_priority_max(SCHED_FIFO);
+//     if(maxpri == -1) { 
+//         printf("sched_get_priority_max() failed");
+//     }
+
+//     param.sched_priority = maxpri;
+//     if (sched_setscheduler(getpid(), SCHED_FIFO, &param) == -1) { 
+//         perror("sched_setscheduler() failed");
+//     }
+//     printf("end thread set\n");
+
+//     // Time statistics
+//     struct timespec startTime, endTime, lastStartTime = {};
+//     uint32_t period_ns = 0, exec_ns = 0, latency_ns = 0;
+             
+//     period_max_ns = 0;
+//     period_min_ns = 0xffffffff;
+//     latency_max_ns = 0;
+//     latency_min_ns = 0xffffffff;
+//     clock_gettime(CLOCK_TO_USE, &lastStartTime);
+//     // Time statistics
+
+//     clock_gettime(CLOCK_TO_USE, &wakeupTime);
+// 	while(run) {
+		
+//         wakeupTime = timespec_add(wakeupTime, cycletime);
+// 		clock_nanosleep(CLOCK_TO_USE, TIMER_ABSTIME, &wakeupTime, NULL);
+
+//         // Write application time to master
+//         //
+//         // It is a good idea to use the target time (not the measured time) as
+//         // application time, because it is more stable.
+//         //
+//         ecrt_master_application_time(master, TIMESPEC2NS(wakeupTime));
+        
+//         /*Receive process data*/
+//         ecrt_master_receive(master);
+//         for (i = 0; i < slaves_cnt; i++) {
+//             ecrt_domain_process(slaves_group[i]->domain);
+//             // check process data state (optional)
+//             check_domain_state(slaves_group[i]);
+//         }
+//        	if(counter) {
+//        		counter--;
+//        	}else {
+//        		counter = FREQUENCY;
+//        		check_master_state();
+//        		for (i = 0; i < slaves_cnt; i++) {
+//                 check_slave_config_states(slaves_group[i]);
+//                 EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x80);
+//                 slaves_group[i]->status = EC_READ_U16(slaves_group[i]->domain_pd + slaves_group[i]->status_word);
+//                 slaves_group[i]->opmode = EC_READ_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation_display);
+//                 slaves_group[i]->cur_velocity = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->current_velocity);
+                
+//                 curpos = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->position_actual_value);
+//                 // if(curpos < 0) {
+//                 //     curpos = POSITION_MAX - abs(curpos);
+//                 // }
+//                 slaves_group[i]->curpos = curpos;
+                
+//                 printf_debug("slave %d madht:  act velocity = %d ,act position = %d,  status = 0x%x, opmode = 0x%x\n", 
+//                 slaves_group[i]->alias, slaves_group[i]->cur_velocity, slaves_group[i]->curpos, slaves_group[i]->status, slaves_group[i]->opmode);
+                
+//                 if( (slaves_group[i]->status & 0x004f) == 0x0040) {
+//                     printf_debug("0x06\n");
+//                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0006);
+//                     EC_WRITE_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation, 9);
+//                 }
+//                 else if( (slaves_group[i]->status & 0x006f) == 0x0021) {
+//                     printf_debug("0x07\n");
+//                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0007);
+//                 }
+//                 else if( (slaves_group[i]->status & 0x006f) == 0x0023) {
+//                     printf_debug("0x0f\n");
+//                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x000f);
+//                     EC_WRITE_S32(slaves_group[i]->domain_pd + slaves_group[i]->target_velocity, slaves_group[i]->user_velocity);
+//                 }
+//                 //operation enabled
+//                 else if( (slaves_group[i]->status & 0x006f) == 0x0027) {
+//                     printf_debug("0x1f\n");
+//                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x001f);
+//                 }
+//                 if(slaves_group[i]->change_velocity) {
+//                     printf_debug("change velocity\n");
+//                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0007); // stop slaves
+//                     slaves_group[i]->change_velocity = false;
+//                 }
+//             }        	
+//        	}
+
+//         clock_gettime(CLOCK_TO_USE, &time);
+//         ecrt_master_sync_reference_clock_to(master, TIMESPEC2NS(time));
+
+//         ecrt_master_sync_slave_clocks(master);
+//         // send process data
+//         for (i = 0; i < slaves_cnt; i++) {
+//             ecrt_domain_queue(slaves_group[i]->domain);
+//         }
+//         ecrt_master_send(master);
+        
+//         // Time statistics
+//         clock_gettime(CLOCK_TO_USE, &startTime);
+//         latency_ns = DIFF_NS(wakeupTime, startTime);
+//         period_ns = DIFF_NS(lastStartTime, startTime);
+//         if (clean_cycle >= (12 * 60 * 60 * 1000)) { // 12 hour clean
+//             clean_cycle = 0;
+//             period_max_ns = 0;
+//             period_min_ns = 0xffffffff;
+//             latency_max_ns = 0;
+//             latency_min_ns = 0xffffffff;
+//         }
+//         if (latency_ns > latency_max_ns) {
+//             latency_max_ns = latency_ns;
+//         }
+//         if (latency_ns < latency_min_ns) {
+//             latency_min_ns = latency_ns;
+//         }
+//         if (period_ns > period_max_ns) {
+//             period_max_ns = period_ns;
+//         }
+//         if (period_ns < period_min_ns) {
+//             period_min_ns = period_ns;
+//         }
+//         clean_cycle++;
+//         lastStartTime = startTime;
+//         // Time statistics
+// 	}
+// }
+
+void *slave_position_mode_pthread(void *arg) {
     struct timespec wakeupTime, time;
-	//MADHT1505BA1_object **object = (MADHT1505BA1_object **)arg;
-	int counter = 0;
-	struct sched_param param;
+    //MADHT1505BA1_object **object = (MADHT1505BA1_object **)arg;
+    int counter = 0;
+    struct sched_param param;
     int maxpri, count, i;
     int curpos = 0;
 
@@ -312,10 +459,10 @@ void *slave_pthread(void *arg) {
     // Time statistics
 
     clock_gettime(CLOCK_TO_USE, &wakeupTime);
-	while(run) {
-		
+    while(run) {
+        
         wakeupTime = timespec_add(wakeupTime, cycletime);
-		clock_nanosleep(CLOCK_TO_USE, TIMER_ABSTIME, &wakeupTime, NULL);
+        clock_nanosleep(CLOCK_TO_USE, TIMER_ABSTIME, &wakeupTime, NULL);
 
         // Write application time to master
         //
@@ -331,29 +478,34 @@ void *slave_pthread(void *arg) {
             // check process data state (optional)
             check_domain_state(slaves_group[i]);
         }
-       	if(counter) {
-       		counter--;
-       	}else {
-       		counter = FREQUENCY;
-       		check_master_state();
-       		for (i = 0; i < slaves_cnt; i++) {
+        if(counter) {
+            counter--;
+        }else {
+            counter = FREQUENCY;
+            check_master_state();
+            for (i = 0; i < slaves_cnt; i++) {
                 check_slave_config_states(slaves_group[i]);
                 EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x80);
+                EC_WRITE_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation, 1);
+
+                // EC_WRITE_S32(slaves_group[i]->domain_pd + slaves_group[i]->target_position, slaves_group[i]->user_set_pos);
+                // EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_velocity, TARGET_VELOCITY);
+                // EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->end_velocity, TARGET_VELOCITY);
+                // EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_acceleration, TARGET_VELOCITY);
+                // EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->end_deceleration, TARGET_VELOCITY);
+
                 slaves_group[i]->status = EC_READ_U16(slaves_group[i]->domain_pd + slaves_group[i]->status_word);
                 slaves_group[i]->opmode = EC_READ_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation_display);
-                slaves_group[i]->cur_velocity = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->current_velocity);
                 
                 curpos = EC_READ_S32(slaves_group[i]->domain_pd + slaves_group[i]->position_actual_value);
-                if(curpos < 0) {
-                    curpos = POSITION_MAX - abs(curpos);
-                }
                 slaves_group[i]->curpos = curpos;
                 
-                printf_debug("slave %d madht:  act velocity = %d ,act position = %d,  status = 0x%x, opmode = 0x%x\n", slaves_group[i]->alias, slaves_group[i]->cur_velocity, slaves_group[i]->curpos, slaves_group[i]->status, slaves_group[i]->opmode);
+                printf_debug("slave %d madht: act position = %d,  status = 0x%x, opmode = 0x%x\n", 
+                slaves_group[i]->alias, slaves_group[i]->curpos, slaves_group[i]->status, slaves_group[i]->opmode);
+                
                 if( (slaves_group[i]->status & 0x004f) == 0x0040) {
                     printf_debug("0x06\n");
                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0006);
-                    EC_WRITE_U8(slaves_group[i]->domain_pd + slaves_group[i]->modes_of_operation, 9);
                 }
                 else if( (slaves_group[i]->status & 0x006f) == 0x0021) {
                     printf_debug("0x07\n");
@@ -362,20 +514,31 @@ void *slave_pthread(void *arg) {
                 else if( (slaves_group[i]->status & 0x006f) == 0x0023) {
                     printf_debug("0x0f\n");
                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x000f);
-                    EC_WRITE_S32(slaves_group[i]->domain_pd + slaves_group[i]->target_velocity, slaves_group[i]->user_velocity);
+                    if(slaves_group[i]->change_pos) {
+                        EC_WRITE_S32(slaves_group[i]->domain_pd + slaves_group[i]->target_position, slaves_group[i]->user_set_pos);
+                        EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_velocity, 2000000);
+                        EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_acceleration, 500000000);
+                        EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->end_deceleration, 500000000);
+                        slaves_group[i]->change_pos = false;
+                    }
                 }
-                //operation enabled
+                
+                // //operation enabled
                 else if( (slaves_group[i]->status & 0x006f) == 0x0027) {
                     printf_debug("0x1f\n");
                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x001f);
+                    // if((EC_READ_U16(slaves_group[i]->domain_pd + slaves_group[i]->status) & (STATUS_SERVO_ENABLE_BIT)) == 0){
+                    //    printf("STATUS_SERVO_ENABLE_BIT\n");
+                    //    continue;
+                    // }
                 }
-                if(slaves_group[i]->change_velocity) {
-                    printf_debug("change velocity\n");
+                 if(slaves_group[i]->change_pos) {
+                    printf_debug("change pos\n");
                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x0007); // stop slaves
-                    slaves_group[i]->change_velocity = false;
                 }
-            }        	
-       	}
+
+            }
+        }
 
         clock_gettime(CLOCK_TO_USE, &time);
         ecrt_master_sync_reference_clock_to(master, TIMESPEC2NS(time));
@@ -413,7 +576,7 @@ void *slave_pthread(void *arg) {
         clean_cycle++;
         lastStartTime = startTime;
         // Time statistics
-	}
+    }
 }
 
 int MADHT1505BA1_slave_start(int cnt, ...) {
@@ -432,7 +595,7 @@ int MADHT1505BA1_slave_start(int cnt, ...) {
     for (i = 0; i < cnt; i++) {
         slaves_group[i] = __builtin_va_arg(vaptr, MADHT1505BA1_object *);
     }
-	err = pthread_create(&thread, NULL, slave_pthread, NULL);
+	err = pthread_create(&thread, NULL, slave_position_mode_pthread, NULL);
 	if(err != 0) {
 		printf("MADHT1505BA1_drive_slave: can't create thread\n");
 		return -1;
@@ -441,34 +604,34 @@ int MADHT1505BA1_slave_start(int cnt, ...) {
 	}
 }
 
-int MADHT1505BA1_motor_start(MADHT1505BA1_object *object) {
-    uint16_t    status;
-    status = EC_READ_U16(object->domain_pd + object->status_word);
-    if(status == 0x1237) {
-        object->change_velocity = true;
-        object->user_velocity = TARGET_VELOCITY;
-    }else {
-        printf("slave %d not start\n", object->alias);
-    }
-    return 0;
-}
+// int MADHT1505BA1_motor_start(MADHT1505BA1_object *object, int velocity) {
+//     uint16_t    status;
+//     status = EC_READ_U16(object->domain_pd + object->status_word);
+//     if(status == 0x1237) {
+//         object->change_velocity = true;
+//         object->user_velocity = velocity;
+//     }else {
+//         printf("slave %d not start\n", object->alias);
+//     }
+//     return 0;
+// }
 
-int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object) {
-    uint16_t    status;
-    status = EC_READ_U16(object->domain_pd + object->status_word);
-    if(status == 0x1237) {
-        object->change_velocity = true;
-        object->user_velocity = 0;
-    }else {
-        printf("slave %d not start\n", object->alias);
-    }
-    return 0;
-}
+// int MADHT1505BA1_motor_stop(MADHT1505BA1_object *object) {
+//     uint16_t    status;
+//     status = EC_READ_U16(object->domain_pd + object->status_word);
+//     if(status == 0x1237) {
+//         object->change_velocity = true;
+//         object->user_velocity = 0;
+//     }else {
+//         printf("slave %d not start\n", object->alias);
+//     }
+//     return 0;
+// }
 
 int MADHT1505BA1_check_motor(MADHT1505BA1_object *object) {
     uint16_t    status;
     status = EC_READ_U16(object->domain_pd + object->status_word);
-    if(status != 0x1237) {
+    if(status != 0x1237 && status != 0x1637) {
         return -1;
     }else {
         return object->cur_velocity;
@@ -493,4 +656,14 @@ uint32_t MADHT1505BA1_time_statistics_period_max_ns(void) {
 
 int MADHT1505BA1_run_position_acquisition(MADHT1505BA1_object *object) {
     return object->curpos;
+}
+
+void MADHT1505BA1_motor_set_position_run(int user_position, MADHT1505BA1_object *object) {
+    object->change_pos = true;
+    object->user_set_pos = user_position;
+}
+
+void MADHT1505BA1_position_reset(MADHT1505BA1_object *object) {
+    object->change_pos = true;
+    object->user_set_pos = 0;
 }

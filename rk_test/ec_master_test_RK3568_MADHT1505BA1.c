@@ -308,6 +308,101 @@ void check_domain_state(void)
 }
  
 /*****************************************************************************/
+void cyclic_task_position_mode()
+{
+    int tmp = false;
+    struct timespec wakeupTime, time;
+    static int curpos = 0;
+    // get current time
+    clock_gettime(CLOCK_TO_USE, &wakeupTime);
+
+    while(app_run) {
+        wakeupTime = timespec_add(wakeupTime, cycletime);
+        clock_nanosleep(CLOCK_TO_USE, TIMER_ABSTIME, &wakeupTime, NULL);
+
+        // Write application time to master
+        //
+        // It is a good idea to use the target time (not the measured time) as
+        // application time, because it is more stable.
+        //
+        ecrt_master_application_time(master, TIMESPEC2NS(wakeupTime));
+
+        // receive process data
+        ecrt_master_receive(master);
+        ecrt_domain_process(domain);
+
+        // check process data state (optional)
+        check_domain_state();
+
+        if (counter) {
+            counter--;
+        } else { // do this at 1 Hz
+            counter = FREQUENCY;
+            // check for master state (optional)
+            check_master_state();
+            check_slave_config_states();
+
+            EC_WRITE_U16(domain_pd + control_word, 0x80); //复位错误码
+            EC_WRITE_U8(domain_pd + modes_of_operation, 8); //设置当前控制器模式为位置模式
+            cur_mode = EC_READ_U8(domain_pd + modes_of_operation_display);
+            printf_debug("curMode: %d\t", cur_mode); //当前操作模式
+            cur_status = EC_READ_U16(domain_pd + status_word);
+            printf_debug("curStatus: %x\n", cur_status);
+            if((cur_status & 0x004f) == 0x0040 && tmp == false) {
+                EC_WRITE_U16(domain_pd + control_word, 0x06); 
+                printf_debug("0x06\n");
+            }
+            else if((cur_status & 0x006f) == 0x0021 && tmp == false) {
+                EC_WRITE_U16(domain_pd + control_word, 0x07);
+                printf_debug("0x07\n");
+            }
+            else if((cur_status & 0x006f) == 0x0023 && tmp == false) {
+                EC_WRITE_U16(domain_pd + control_word, 0x0F);
+                printf_debug("0x0F\n");
+            }
+            else if((cur_status & 0x006f) == 0x0027 && tmp == false)
+            {
+                EC_WRITE_U16(domain_pd + control_word, 0x001f);
+                printf_debug("0x1f\n");
+    
+                curpos = EC_READ_S32(domain_pd + position_actual_value);     
+                printf_debug("madht >>> Axis  current position = %d\n", curpos);
+
+                if((EC_READ_U16(domain_pd + status_word) & (STATUS_SERVO_ENABLE_BIT)) == 0) {
+                    tmp = false;
+                    printf_debug("EC_READ_U16(domain_pd + status_word) & (STATUS_SERVO_ENABLE_BIT)) == 0\n");
+                    continue;
+                }else {
+                    tmp = true;
+                }
+            }
+
+            if(tmp == true) {
+                cur_status = EC_READ_U16(domain_pd + status_word);
+                printf_debug("curpos = %d\t",curpos);
+                printf_debug("actpos... %d\n",EC_READ_S32(domain_pd + position_actual_value));
+                curpos += 10000;
+                EC_WRITE_S32(domain_pd + target_position, curpos);
+                tmp = false;
+            }
+        }
+
+        if (sync_ref_counter) {
+            sync_ref_counter--;
+        } else {
+            sync_ref_counter = 1; // sync every cycle
+
+            clock_gettime(CLOCK_TO_USE, &time);
+            ecrt_master_sync_reference_clock_to(master, TIMESPEC2NS(time));
+        }
+        ecrt_master_sync_slave_clocks(master);
+
+        // send process data
+        ecrt_domain_queue(domain);
+        ecrt_master_send(master);
+    }
+}
+
 static int clean_cycle = 0;//5 * 60 * FREQUENCY;
 void cyclic_task_velocity_mode()
 {
