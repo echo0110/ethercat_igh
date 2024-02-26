@@ -634,7 +634,7 @@ int MADHT1505BA1_check_motor(MADHT1505BA1_object *object) {
     if(status != 0x1237 && status != 0x1637) {
         return -1;
     }else {
-        return object->cur_velocity;
+        return 0;
     }
 }
 
