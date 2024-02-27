@@ -563,7 +563,7 @@ void *slave_position_mode_pthread(void *arg) {
         clock_gettime(CLOCK_TO_USE, &startTime);
         latency_ns = DIFF_NS(wakeupTime, startTime);
         period_ns = DIFF_NS(lastStartTime, startTime);
-        if (clean_cycle >= (12 * 60 * 60 * 1000)) { // 12 hour clean
+        if (clean_cycle >= (5 * 60 * 1000)) { // 5 min clean
             clean_cycle = 0;
             period_max_ns = 0;
             period_min_ns = 0xffffffff;
