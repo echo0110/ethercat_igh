@@ -429,6 +429,7 @@ void *slave_position_mode_pthread(void *arg) {
     struct sched_param param;
     int maxpri, count, i;
     int curpos = 0;
+    bool do_flag = false;
 
     printf("slave_pthread bind_cpu\n");
     if(thread_bind_cpu(cpu_core) == -1) {
@@ -478,7 +479,14 @@ void *slave_position_mode_pthread(void *arg) {
             // check process data state (optional)
             check_domain_state(slaves_group[i]);
         }
-        if(counter) {
+
+        for (i = 0; i < slaves_cnt; i++) {
+            if(slaves_group[i]->change_pos == true) {
+                do_flag = true;
+            }
+        }
+
+        if(counter && do_flag == false) {
             counter--;
         }else {
             counter = FREQUENCY;
@@ -520,6 +528,7 @@ void *slave_position_mode_pthread(void *arg) {
                         EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_acceleration, 500000000);
                         EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->end_deceleration, 500000000);
                         slaves_group[i]->change_pos = false;
+                        do_flag = false;
                     }
                 }
                 
