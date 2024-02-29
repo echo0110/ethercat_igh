@@ -67,7 +67,9 @@ ifeq (@ENABLE_STMMAC@,1)
 		stmmac_hwtstamp-@KERNEL_STMMAC@-ethercat.o \
 		stmmac_ptp-@KERNEL_STMMAC@-ethercat.o \
 		stmmac_platform-@KERNEL_STMMAC@-ethercat.o \
-		dwmac-rk-@KERNEL_STMMAC@-ethercat.o
+		dwmac-rk-@KERNEL_STMMAC@-ethercat.o \
+		stmmac_xdp-@KERNEL_STMMAC@-ethercat.o
+
 	obj-m += ec_stmmac.o
 	ec_stmmac-objs := $(EC_STMMAC_OBJ)
 	CFLAGS_stmmac_main-@KERNEL_STMMAC@-ethercat.o = -DREV=$(REV)
