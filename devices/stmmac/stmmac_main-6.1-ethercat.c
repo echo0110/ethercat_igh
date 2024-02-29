@@ -125,6 +125,7 @@ module_param(chain_mode, int, 0444);
 MODULE_PARM_DESC(chain_mode, "To use chain instead of ring mode");
 
 static irqreturn_t stmmac_interrupt(int irq, void *dev_id);
+static int stmmac_rx(struct stmmac_priv *priv, int limit, u32 queue);
 /* For MSI interrupts handling */
 static irqreturn_t stmmac_mac_interrupt(int irq, void *dev_id);
 static irqreturn_t stmmac_safety_interrupt(int irq, void *dev_id);
@@ -977,6 +978,8 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, false);
+	if (priv->ecdev)
+		ecdev_set_link(priv->ecdev, 0);
 }
 
 static void stmmac_mac_link_up(struct phylink_config *config,
@@ -1086,6 +1089,8 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, true);
+	if (priv->ecdev)
+		ecdev_set_link(priv->ecdev, 1);
 }
 
 static const struct phylink_mac_ops stmmac_phylink_mac_ops = {
@@ -2538,7 +2543,8 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 	unsigned int bytes_compl = 0, pkts_compl = 0;
 	unsigned int entry, xmits = 0, count = 0;
 
-	__netif_tx_lock_bh(netdev_get_tx_queue(priv->dev, queue));
+	if (!priv->ecdev)
+		__netif_tx_lock_bh(netdev_get_tx_queue(priv->dev, queue));
 
 	priv->xstats.tx_clean++;
 
@@ -2639,7 +2645,7 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 			tx_q->xsk_frames_done++;
 
 		if (tx_q->tx_skbuff_dma[entry].buf_type == STMMAC_TXBUF_T_SKB) {
-			if (likely(skb)) {
+			if (!priv->ecdev && likely(skb)) {
 				pkts_compl++;
 				bytes_compl += skb->len;
 				dev_consume_skb_any(skb);
@@ -2653,10 +2659,11 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 	}
 	tx_q->dirty_tx = entry;
 
-	netdev_tx_completed_queue(netdev_get_tx_queue(priv->dev, queue),
-				  pkts_compl, bytes_compl);
+	if (!priv->ecdev)
+		netdev_tx_completed_queue(netdev_get_tx_queue(priv->dev, queue),
+					  pkts_compl, bytes_compl);
 
-	if (unlikely(netif_tx_queue_stopped(netdev_get_tx_queue(priv->dev,
+	if (!priv->ecdev && unlikely(netif_tx_queue_stopped(netdev_get_tx_queue(priv->dev,
 								queue))) &&
 	    stmmac_tx_avail(priv, queue) > STMMAC_TX_THRESH(priv)) {
 
@@ -2694,10 +2701,11 @@ static int stmmac_tx_clean(struct stmmac_priv *priv, int budget, u32 queue)
 	}
 
 	/* We still have pending packets, let's call for a new scheduling */
-	if (tx_q->dirty_tx != tx_q->cur_tx)
+	if (!priv->ecdev && (tx_q->dirty_tx != tx_q->cur_tx))
 		stmmac_tx_timer_arm(priv, queue);
 
-	__netif_tx_unlock_bh(netdev_get_tx_queue(priv->dev, queue));
+	if (!priv->ecdev)
+			__netif_tx_unlock_bh(netdev_get_tx_queue(priv->dev, queue));
 
 	/* Combine decisions from TX clean and XSK TX */
 	return max(count, xmits);
@@ -2789,22 +2797,26 @@ static int stmmac_napi_check(struct stmmac_priv *priv, u32 chan, u32 dir)
 	rx_napi = rx_q->xsk_pool ? &ch->rxtx_napi : &ch->rx_napi;
 	tx_napi = tx_q->xsk_pool ? &ch->rxtx_napi : &ch->tx_napi;
 
-	if ((status & handle_rx) && (chan < priv->plat->rx_queues_to_use)) {
+	if (!priv->ecdev && (status & handle_rx) && (chan < priv->plat->rx_queues_to_use)) {
 		if (napi_schedule_prep(rx_napi)) {
 			spin_lock_irqsave(&ch->lock, flags);
 			stmmac_disable_dma_irq(priv, priv->ioaddr, chan, 1, 0);
 			spin_unlock_irqrestore(&ch->lock, flags);
 			__napi_schedule(rx_napi);
 		}
+	} else if (priv->ecdev && (status & handle_rx)) {
+		stmmac_rx(priv, 64, chan);
 	}
 
-	if ((status & handle_tx) && (chan < priv->plat->tx_queues_to_use)) {
+	if (!priv->ecdev && (status & handle_tx) && (chan < priv->plat->tx_queues_to_use)) {
 		if (napi_schedule_prep(tx_napi)) {
 			spin_lock_irqsave(&ch->lock, flags);
 			stmmac_disable_dma_irq(priv, priv->ioaddr, chan, 0, 1);
 			spin_unlock_irqrestore(&ch->lock, flags);
 			__napi_schedule(tx_napi);
 		}
+	} else if (priv->ecdev && (status & handle_tx)) {
+		stmmac_tx_clean(priv, 64, chan);
 	}
 
 	return status;
@@ -3039,8 +3051,10 @@ static void stmmac_init_coalesce(struct stmmac_priv *priv)
 		priv->tx_coal_frames[chan] = STMMAC_TX_FRAMES;
 		priv->tx_coal_timer[chan] = STMMAC_COAL_TX_TIMER;
 
-		hrtimer_init(&tx_q->txtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-		tx_q->txtimer.function = stmmac_tx_timer;
+		if (!priv->ecdev) {
+			hrtimer_init(&tx_q->txtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+			tx_q->txtimer.function = stmmac_tx_timer;
+		}
 	}
 
 	for (chan = 0; chan < rx_channel_count; chan++)
@@ -3856,25 +3870,33 @@ static int __stmmac_open(struct net_device *dev,
 
 	stmmac_init_coalesce(priv);
 
+	rtnl_lock();
 	phylink_start(priv->phylink);
 	/* We may have called phylink_speed_down before */
 	phylink_speed_up(priv->phylink);
+	rtnl_unlock();
 
-	ret = stmmac_request_irq(dev);
-	if (ret)
-		goto irq_error;
+	if (!priv->ecdev) {
+		ret = stmmac_request_irq(dev);
+		if (ret)
+			goto irq_error;
+	}
 
-	stmmac_enable_all_queues(priv);
-	netif_tx_start_all_queues(priv->dev);
-	stmmac_enable_all_dma_irq(priv);
+	if (!priv->ecdev) {
+		stmmac_enable_all_queues(priv);
+		netif_tx_start_all_queues(priv->dev);
+		stmmac_enable_all_dma_irq(priv);
+	}
 
 	return 0;
 
 irq_error:
 	phylink_stop(priv->phylink);
 
-	for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++)
-		hrtimer_cancel(&priv->dma_conf.tx_queue[chan].txtimer);
+	for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++) {
+		if (!priv->ecdev)
+			hrtimer_cancel(&priv->dma_conf.tx_queue[chan].txtimer);
+	}
 
 	stmmac_hw_teardown(dev);
 init_error:
@@ -3932,15 +3954,19 @@ static int stmmac_release(struct net_device *dev)
 	if (priv->plat->integrated_phy_power)
 		priv->plat->integrated_phy_power(priv->plat->bsp_priv, false);
 
-	stmmac_disable_all_queues(priv);
+	if (!priv->ecdev)
+		stmmac_disable_all_queues(priv);
 
-	for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++)
-		hrtimer_cancel(&priv->dma_conf.tx_queue[chan].txtimer);
+	for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++) {
+		if (!priv->ecdev)
+			hrtimer_cancel(&priv->dma_conf.tx_queue[chan].txtimer);
+	}
 
 	netif_tx_disable(dev);
 
-	/* Free the IRQ lines */
-	stmmac_free_irq(dev, REQ_IRQ_ERR_ALL, 0);
+	if (!priv->ecdev)
+		/* Free the IRQ lines */
+		stmmac_free_irq(dev, REQ_IRQ_ERR_ALL, 0);
 
 	if (priv->eee_enabled) {
 		priv->tx_path_in_lpi_mode = false;
@@ -4133,7 +4159,7 @@ static netdev_tx_t stmmac_tso_xmit(struct sk_buff *skb, struct net_device *dev)
 	/* Desc availability based on threshold should be enough safe */
 	if (unlikely(stmmac_tx_avail(priv, queue) <
 		(((skb->len - proto_hdr_len) / TSO_MAX_BUFF_SIZE + 1)))) {
-		if (!netif_tx_queue_stopped(netdev_get_tx_queue(dev, queue))) {
+		if (!priv->ecdev && !netif_tx_queue_stopped(netdev_get_tx_queue(dev, queue))) {
 			netif_tx_stop_queue(netdev_get_tx_queue(priv->dev,
 								queue));
 			/* This is a hard error, log it. */
@@ -4253,7 +4279,8 @@ static netdev_tx_t stmmac_tso_xmit(struct sk_buff *skb, struct net_device *dev)
 		set_ic = true;
 	else
 		set_ic = false;
-
+	if (!priv->ecdev)
+		set_ic = true;
 	if (set_ic) {
 		if (tx_q->tbs & STMMAC_TBS_AVAIL)
 			desc = &tx_q->dma_entx[tx_q->cur_tx].basic;
@@ -4273,9 +4300,14 @@ static netdev_tx_t stmmac_tso_xmit(struct sk_buff *skb, struct net_device *dev)
 	tx_q->cur_tx = STMMAC_GET_ENTRY(tx_q->cur_tx, priv->dma_conf.dma_tx_size);
 
 	if (unlikely(stmmac_tx_avail(priv, queue) <= (MAX_SKB_FRAGS + 1))) {
-		netif_dbg(priv, hw, priv->dev, "%s: stop transmitted packets\n",
-			  __func__);
-		netif_tx_stop_queue(netdev_get_tx_queue(priv->dev, queue));
+		if (!priv->ecdev) {
+			netif_dbg(priv, hw, priv->dev, "%s: stop transmitted packets\n",
+				  __func__);
+			netif_tx_stop_queue(netdev_get_tx_queue(priv->dev, queue));
+		} else {
+			netdev_err(priv->dev, "%s: stop transmitted packets\n",
+				   __func__);		
+		}
 	}
 
 	dev->stats.tx_bytes += skb->len;
@@ -4285,7 +4317,8 @@ static netdev_tx_t stmmac_tso_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (priv->sarc_type)
 		stmmac_set_desc_sarc(priv, first, priv->sarc_type);
 
-	skb_tx_timestamp(skb);
+	if (!priv->ecdev)
+		skb_tx_timestamp(skb);
 
 	if (unlikely((skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
 		     priv->hwts_tx_en)) {
@@ -4320,10 +4353,12 @@ static netdev_tx_t stmmac_tso_xmit(struct sk_buff *skb, struct net_device *dev)
 		print_pkt(skb->data, skb_headlen(skb));
 	}
 
-	netdev_tx_sent_queue(netdev_get_tx_queue(dev, queue), skb->len);
+	if (!priv->ecdev)
+		netdev_tx_sent_queue(netdev_get_tx_queue(dev, queue), skb->len);
 
 	stmmac_flush_tx_descriptors(priv, queue);
-	stmmac_tx_timer_arm(priv, queue);
+	if (!priv->ecdev)
+		stmmac_tx_timer_arm(priv, queue);
 
 	return NETDEV_TX_OK;
 
@@ -4373,7 +4408,7 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	if (unlikely(stmmac_tx_avail(priv, queue) < nfrags + 1)) {
-		if (!netif_tx_queue_stopped(netdev_get_tx_queue(dev, queue))) {
+		if (!priv->ecdev && !netif_tx_queue_stopped(netdev_get_tx_queue(dev, queue))) {
 			netif_tx_stop_queue(netdev_get_tx_queue(priv->dev,
 								queue));
 			/* This is a hard error, log it. */
@@ -4389,7 +4424,8 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	entry = tx_q->cur_tx;
 	first_entry = entry;
-	WARN_ON(tx_q->tx_skbuff[first_entry]);
+	if (!priv->ecdev)
+		WARN_ON(tx_q->tx_skbuff[first_entry]);
 
 	csum_insertion = (skb->ip_summed == CHECKSUM_PARTIAL);
 
@@ -4474,6 +4510,9 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	else
 		set_ic = false;
 
+	if (!priv->ecdev)
+		set_ic = true;
+
 	if (set_ic) {
 		if (likely(priv->extend_desc))
 			desc = &tx_q->dma_etx[entry].basic;
@@ -4506,9 +4545,14 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	if (unlikely(stmmac_tx_avail(priv, queue) <= (MAX_SKB_FRAGS + 1))) {
-		netif_dbg(priv, hw, priv->dev, "%s: stop transmitted packets\n",
-			  __func__);
-		netif_tx_stop_queue(netdev_get_tx_queue(priv->dev, queue));
+		if (!priv->ecdev) {
+			netif_dbg(priv, hw, priv->dev, "%s: stop transmitted packets\n",
+				  __func__);
+			netif_tx_stop_queue(netdev_get_tx_queue(priv->dev, queue));
+		} else {
+			netdev_err(priv->dev, "%s: stop transmitted packets\n",
+				   __func__);		
+		}
 	}
 
 	dev->stats.tx_bytes += skb->len;
@@ -4516,7 +4560,8 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (priv->sarc_type)
 		stmmac_set_desc_sarc(priv, first, priv->sarc_type);
 
-	skb_tx_timestamp(skb);
+	if (!priv->ecdev)
+		skb_tx_timestamp(skb);
 
 	/* Ready to fill the first descriptor and set the OWN bit w/o any
 	 * problems because all the descriptors are actually ready to be
@@ -4561,12 +4606,14 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	stmmac_set_tx_owner(priv, first);
 
-	netdev_tx_sent_queue(netdev_get_tx_queue(dev, queue), skb->len);
+	if (!priv->ecdev)
+		netdev_tx_sent_queue(netdev_get_tx_queue(dev, queue), skb->len);
 
 	stmmac_enable_dma_transmission(priv, priv->ioaddr);
 
 	stmmac_flush_tx_descriptors(priv, queue);
-	stmmac_tx_timer_arm(priv, queue);
+	if (!priv->ecdev)
+		stmmac_tx_timer_arm(priv, queue);
 
 	return NETDEV_TX_OK;
 
@@ -5423,20 +5470,27 @@ drain_data:
 
 		/* Got entire packet into SKB. Finish it. */
 
-		stmmac_get_rx_hwtstamp(priv, p, np, skb);
-		stmmac_rx_vlan(priv->dev, skb);
-		skb->protocol = eth_type_trans(skb, priv->dev);
+		if (!priv->ecdev) {
+			stmmac_get_rx_hwtstamp(priv, p, np, skb);
+			stmmac_rx_vlan(priv->dev, skb);
+			skb->protocol = eth_type_trans(skb, priv->dev);
+		}
 
 		if (unlikely(!coe))
 			skb_checksum_none_assert(skb);
 		else
 			skb->ip_summed = CHECKSUM_UNNECESSARY;
 
-		if (!stmmac_get_rx_hash(priv, p, &hash, &hash_type))
+		if (!priv->ecdev && !stmmac_get_rx_hash(priv, p, &hash, &hash_type))
 			skb_set_hash(skb, hash, hash_type);
 
-		skb_record_rx_queue(skb, queue);
-		napi_gro_receive(&ch->rx_napi, skb);
+		if (priv->ecdev) {
+			ecdev_receive(priv->ecdev, skb->data, len);
+			dev_kfree_skb_any(skb);
+		} else {
+			skb_record_rx_queue(skb, queue);
+			napi_gro_receive(&ch->rx_napi, skb);
+		}
 		skb = NULL;
 
 		priv->dev->stats.rx_packets++;
@@ -5451,7 +5505,8 @@ drain_data:
 		rx_q->state.len = len;
 	}
 
-	stmmac_finalize_xdp_rx(priv, xdp_status);
+	if (!priv->ecdev) 
+		stmmac_finalize_xdp_rx(priv, xdp_status);
 
 	stmmac_rx_refill(priv, queue);
 
@@ -5505,6 +5560,11 @@ static int stmmac_napi_poll_tx(struct napi_struct *napi, int budget)
 	}
 
 	return work_done;
+}
+
+void ec_poll(struct net_device *netdev)
+{
+	stmmac_interrupt(netdev->irq, netdev);
 }
 
 static int stmmac_napi_poll_rxtx(struct napi_struct *napi, int budget)
@@ -5595,6 +5655,9 @@ static int stmmac_change_mtu(struct net_device *dev, int new_mtu)
 	struct stmmac_dma_conf *dma_conf;
 	const int mtu = new_mtu;
 	int ret;
+
+	if (priv->ecdev)
+		return -EBUSY;
 
 	if (txfifosz == 0)
 		txfifosz = priv->dma_cap.tx_fifo_size;
@@ -5752,7 +5815,7 @@ static void stmmac_common_interrupt(struct stmmac_priv *priv)
 	xmac = priv->plat->has_gmac4 || priv->plat->has_xgmac;
 	queues_count = (rx_cnt > tx_cnt) ? rx_cnt : tx_cnt;
 
-	if (priv->irq_wake)
+	if (!priv->ecdev && priv->irq_wake)
 		pm_wakeup_event(priv->device, 0);
 
 	if (priv->dma_cap.estsel)
@@ -5996,7 +6059,8 @@ static int stmmac_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
 	if (!tc_cls_can_offload_and_chain0(priv->dev, type_data))
 		return ret;
 
-	__stmmac_disable_all_queues(priv);
+	if (!priv->ecdev)
+		stmmac_disable_all_queues(priv);
 
 	switch (type) {
 	case TC_SETUP_CLSU32:
@@ -6009,7 +6073,8 @@ static int stmmac_setup_tc_block_cb(enum tc_setup_type type, void *type_data,
 		break;
 	}
 
-	stmmac_enable_all_queues(priv);
+	if (!priv->ecdev) 
+		stmmac_enable_all_queues(priv);
 	return ret;
 }
 
@@ -7355,11 +7420,25 @@ int stmmac_dvr_probe(struct device *device,
 		goto error_phy_setup;
 	}
 
-	ret = register_netdev(ndev);
-	if (ret) {
-		dev_err(priv->device, "%s: ERROR %i registering the device\n",
-			__func__, ret);
-		goto error_netdev_register;
+	/* offer device to EtherCAT master module */
+	priv->ecdev = ecdev_offer(priv->dev, ec_poll, THIS_MODULE);
+	dev_info(priv->device, "%s: ecdev: 0x%lx\n", __func__, (unsigned long)priv->ecdev);
+
+	if (!priv->ecdev) {
+		ret = register_netdev(ndev);
+		if (ret) {
+			dev_err(priv->device, "%s: ERROR %i registering the device\n",
+				__func__, ret);
+			goto error_netdev_register;
+		}
+	}
+
+	if (priv->ecdev) {
+		ret = ecdev_open(priv->ecdev);
+		if (ret) {
+			ecdev_withdraw(priv->ecdev);
+			goto error_netdev_register;
+		}
 	}
 
 #ifdef CONFIG_DEBUG_FS
@@ -7411,8 +7490,13 @@ int stmmac_dvr_remove(struct device *dev)
 
 	stmmac_stop_all_dma(priv);
 	stmmac_mac_set(priv, priv->ioaddr, false);
-	netif_carrier_off(ndev);
-	unregister_netdev(ndev);
+	if (priv->ecdev) {
+		ecdev_close(priv->ecdev);
+		ecdev_withdraw(priv->ecdev);
+	} else {
+		netif_carrier_off(ndev);
+		unregister_netdev(ndev);
+	}
 
 #ifdef CONFIG_DEBUG_FS
 	stmmac_exit_fs(ndev);
@@ -7448,14 +7532,19 @@ int stmmac_suspend(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	u32 chan;
 
-	if (!ndev || !netif_running(ndev))
+	if (priv->ecdev)
+		return -EBUSY;
+
+	if ((!ndev || !netif_running(ndev)) && !priv->ecdev)
 		return 0;
 
 	mutex_lock(&priv->lock);
 
-	netif_device_detach(ndev);
+	if (!priv->ecdev)
+		netif_device_detach(ndev);
 
-	stmmac_disable_all_queues(priv);
+	if (!priv->ecdev)
+		stmmac_disable_all_queues(priv);
 
 	for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++)
 		hrtimer_cancel(&priv->dma_conf.tx_queue[chan].txtimer);
@@ -7558,7 +7647,10 @@ int stmmac_resume(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	int ret;
 
-	if (!netif_running(ndev))
+	if (priv->ecdev)
+		return -EBUSY;
+
+	if (!netif_running(ndev) && !priv->ecdev)
 		return 0;
 
 	/* Power Down bit, into the PM register, is cleared
@@ -7614,13 +7706,16 @@ int stmmac_resume(struct device *dev)
 
 	stmmac_restore_hw_vlan_rx_fltr(priv, ndev, priv->hw);
 
-	stmmac_enable_all_queues(priv);
-	stmmac_enable_all_dma_irq(priv);
+	if (!priv->ecdev) {
+		stmmac_enable_all_queues(priv);
+		stmmac_enable_all_dma_irq(priv);
+	}
 
 	mutex_unlock(&priv->lock);
 	rtnl_unlock();
 
-	netif_device_attach(ndev);
+	if (!priv->ecdev) 
+		netif_device_attach(ndev);
 
 	return 0;
 }

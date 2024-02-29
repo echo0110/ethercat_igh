@@ -24,6 +24,8 @@
 #include <net/page_pool.h>
 #include <uapi/linux/bpf.h>
 
+#include "../ecdev.h"
+
 struct stmmac_resources {
 	void __iomem *addr;
 	u8 mac[ETH_ALEN];
@@ -325,6 +327,8 @@ struct stmmac_priv {
 	struct bpf_prog *xdp_prog;
 	
 	struct gpio_desc *reset_gpio;
+
+	ec_device_t *ecdev;
 };
 
 enum stmmac_state {
