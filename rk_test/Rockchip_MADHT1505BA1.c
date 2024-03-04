@@ -524,8 +524,8 @@ void *slave_position_mode_pthread(void *arg) {
                     EC_WRITE_U16(slaves_group[i]->domain_pd + slaves_group[i]->control_word, 0x000f);
                     if(slaves_group[i]->change_pos) {
                         EC_WRITE_S32(slaves_group[i]->domain_pd + slaves_group[i]->target_position, slaves_group[i]->user_set_pos);
-                        EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_velocity, 2000000);
-                        EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_acceleration, 500000000);
+                        EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_velocity, 5000000);
+                        EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->profile_acceleration, 2*500000000);
                         EC_WRITE_U32(slaves_group[i]->domain_pd + slaves_group[i]->end_deceleration, 500000000);
                         slaves_group[i]->change_pos = false;
                         do_flag = false;
