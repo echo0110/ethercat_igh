@@ -5368,7 +5368,7 @@ read_again:
 			}
 		}
 
-		if (!skb) {
+		if (!priv->ecdev && !skb) {
 			unsigned int pre_len, sync_len;
 
 			dma_sync_single_for_cpu(priv->device, buf->addr,
@@ -5420,7 +5420,7 @@ read_again:
 			}
 		}
 
-		if (!skb) {
+		if (!priv->ecdev && !skb) {
 			/* XDP program may expand or reduce tail */
 			buf1_len = xdp.data_end - xdp.data;
 
@@ -5438,7 +5438,7 @@ read_again:
 			/* Data payload copied into SKB, page ready for recycle */
 			page_pool_recycle_direct(rx_q->page_pool, buf->page);
 			buf->page = NULL;
-		} else if (buf1_len) {
+		} else if (!priv->ecdev && buf1_len) {
 			dma_sync_single_for_cpu(priv->device, buf->addr,
 						buf1_len, dma_dir);
 			skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
@@ -5450,7 +5450,7 @@ read_again:
 			buf->page = NULL;
 		}
 
-		if (buf2_len) {
+		if (!priv->ecdev && buf2_len) {
 			dma_sync_single_for_cpu(priv->device, buf->sec_addr,
 						buf2_len, dma_dir);
 			skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
@@ -5465,7 +5465,7 @@ read_again:
 drain_data:
 		if (likely(status & rx_not_ls))
 			goto read_again;
-		if (!skb)
+		if (!priv->ecdev && !skb)
 			continue;
 
 		/* Got entire packet into SKB. Finish it. */
@@ -5474,19 +5474,29 @@ drain_data:
 			stmmac_get_rx_hwtstamp(priv, p, np, skb);
 			stmmac_rx_vlan(priv->dev, skb);
 			skb->protocol = eth_type_trans(skb, priv->dev);
-		}
 
-		if (unlikely(!coe))
-			skb_checksum_none_assert(skb);
-		else
-			skb->ip_summed = CHECKSUM_UNNECESSARY;
+			if (unlikely(!coe))
+				skb_checksum_none_assert(skb);
+			else
+				skb->ip_summed = CHECKSUM_UNNECESSARY;
+
+		}
 
 		if (!priv->ecdev && !stmmac_get_rx_hash(priv, p, &hash, &hash_type))
 			skb_set_hash(skb, hash, hash_type);
 
 		if (priv->ecdev) {
-			ecdev_receive(priv->ecdev, skb->data, len);
-			dev_kfree_skb_any(skb);
+			void *data;
+
+			dma_sync_single_for_cpu(priv->device, buf->addr,
+						buf1_len, DMA_FROM_DEVICE);
+			data = page_address(buf->page);
+
+			/* Data payload copied into SKB, page ready for recycle */
+			page_pool_recycle_direct(rx_q->page_pool, buf->page);
+			buf->page = NULL;
+
+			ecdev_receive(priv->ecdev, data, len);
 		} else {
 			skb_record_rx_queue(skb, queue);
 			napi_gro_receive(&ch->rx_napi, skb);
