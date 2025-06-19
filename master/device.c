@@ -343,6 +343,9 @@ void ec_device_send(
         ec_print_data(skb->data, ETH_HLEN + size);
     }
 
+    // set timestamp
+    skb->tstamp = ns_to_ktime(device->master->app_time);
+
     // start sending
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
     if (device->dev->netdev_ops->ndo_start_xmit(skb, device->dev) ==

@@ -4393,6 +4393,16 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	int entry, first_tx;
 	dma_addr_t des;
 
+	if (priv->plat->tx_queues_to_use > 1) {
+		if (priv->plat->est && priv->plat->est->enable)
+			queue = priv->plat->tx_queues_to_use - 1;
+		for (i = 1; i < priv->plat->tx_queues_to_use; i++) {
+			if (priv->dma_conf.tx_queue[i].tbs & STMMAC_TBS_EN) {
+				queue = i;
+			}
+		}
+	}
+
 	tx_q = &priv->dma_conf.tx_queue[queue];
 	first_tx = tx_q->cur_tx;
 

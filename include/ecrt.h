@@ -265,6 +265,24 @@ typedef struct ec_voe_handler ec_voe_handler_t; /**< \see ec_voe_handler. */
 struct ec_reg_request;
 typedef struct ec_reg_request ec_reg_request_t; /**< \see ec_sdo_request. */
 
+typedef struct {
+        uint32_t gate_mask;
+        uint32_t interval;
+} ec_est_sched_entry_t;
+
+typedef struct {
+        uint8_t enable;
+        uint64_t base_time;
+        uint64_t cycle_time;
+        uint32_t num_entries;
+        ec_est_sched_entry_t *entries;
+} ec_est_qopt_offload_t;
+
+typedef struct {
+        uint8_t enable;
+        int32_t queue;
+} ec_tbs_qopt_offload_t;
+
 /*****************************************************************************/
 
 /** Master state.
@@ -1081,6 +1099,9 @@ void ecrt_master_application_time(
         ec_master_t *master, /**< EtherCAT master. */
         uint64_t app_time /**< Application time. */
         );
+
+void ecrt_master_set_est(ec_master_t *master, ec_est_qopt_offload_t *qopt);
+void ecrt_master_set_tbs(ec_master_t *master, ec_tbs_qopt_offload_t *qopt);
 
 /** Queues the DC reference clock drift compensation datagram for sending.
  *

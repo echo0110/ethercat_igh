@@ -42,6 +42,7 @@
 #include <linux/device.h>
 #include <linux/version.h>
 #include <linux/hrtimer.h>
+#include <net/pkt_cls.h>
 
 #include "globals.h"
 #include "slave.h"
@@ -49,6 +50,7 @@
 #include "device.h"
 #include "datagram.h"
 #include "mailbox.h"
+#include "../devices/stmmac/stmmac-6.1-ethercat.h"
 
 #ifdef EC_EOE
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
@@ -3093,6 +3095,52 @@ void ecrt_master_application_time(ec_master_t *master, uint64_t app_time)
 
     if (unlikely(!master->dc_ref_time)) {
         master->dc_ref_time = app_time;
+    }
+}
+
+/*****************************************************************************/
+
+void ecrt_master_set_est(ec_master_t *master, ec_est_qopt_offload_t *ec_qopt)
+{
+    struct tc_taprio_qopt_offload *qopt = NULL;
+    struct net_device *ndev = master->devices[0].dev;
+
+    qopt = kzalloc(sizeof(*qopt) + ec_qopt->num_entries * sizeof(struct tc_taprio_sched_entry), GFP_KERNEL);
+    if (!qopt) {
+        EC_MASTER_ERR(master, "Failed to allocate memory for tc_taprio_qopt_offload.\n");
+        return;
+    }
+
+    for (int i = 0; i < ec_qopt->num_entries; i++) {
+        qopt->entries[i].command = TC_TAPRIO_CMD_SET_GATES;
+        qopt->entries[i].gate_mask = ec_qopt->entries[i].gate_mask;
+        qopt->entries[i].interval = ec_qopt->entries[i].interval;
+    }
+
+    qopt->num_entries = ec_qopt->num_entries;
+    qopt->enable = ec_qopt->enable;
+    qopt->base_time = ns_to_ktime(ec_qopt->base_time);
+    qopt->cycle_time = ec_qopt->cycle_time;
+
+    if (ndev->netdev_ops->ndo_setup_tc) {
+        ndev->netdev_ops->ndo_setup_tc(ndev, TC_SETUP_QDISC_TAPRIO, qopt);
+    }
+
+    kfree(qopt);
+}
+
+/*****************************************************************************/
+
+void ecrt_master_set_tbs(ec_master_t *master, ec_tbs_qopt_offload_t *ec_qopt)
+{
+    struct tc_etf_qopt_offload qopt;
+    struct net_device *ndev = master->devices[0].dev;
+
+    qopt.enable = ec_qopt->enable;
+    qopt.queue = ec_qopt->queue;
+
+    if (ndev->netdev_ops->ndo_setup_tc) {
+        ndev->netdev_ops->ndo_setup_tc(ndev, TC_SETUP_QDISC_ETF, &qopt);
     }
 }
 

@@ -748,6 +748,32 @@ void ecrt_master_application_time(ec_master_t *master, uint64_t app_time)
 
 /****************************************************************************/
 
+void ecrt_master_set_est(ec_master_t *master, ec_est_qopt_offload_t *qopt)
+{
+    int ret;
+
+    ret = ioctl(master->fd, EC_IOCTL_SET_EST, qopt);
+    if (EC_IOCTL_IS_ERROR(ret)) {
+        EC_PRINT_ERR("Failed to set est: %s\n",
+                strerror(EC_IOCTL_ERRNO(ret)));
+    }
+}
+
+/****************************************************************************/
+
+void ecrt_master_set_tbs(ec_master_t *master, ec_tbs_qopt_offload_t *qopt)
+{
+    int ret;
+
+    ret = ioctl(master->fd, EC_IOCTL_SET_TBS, qopt);
+    if (EC_IOCTL_IS_ERROR(ret)) {
+        EC_PRINT_ERR("Failed to set tbs: %s\n",
+                strerror(EC_IOCTL_ERRNO(ret)));
+    }
+}
+
+/****************************************************************************/
+
 void ecrt_master_sync_reference_clock(ec_master_t *master)
 {
     int ret;

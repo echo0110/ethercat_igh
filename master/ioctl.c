@@ -2246,6 +2246,65 @@ static ATTRIBUTES int ec_ioctl_app_time(
 
 /*****************************************************************************/
 
+static ATTRIBUTES int ec_ioctl_set_est(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_est_qopt_offload_t ec_qopt;
+    void __user *arg_entries;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&ec_qopt, (void __user *)arg, sizeof(ec_est_qopt_offload_t))) {
+        return -EFAULT;
+    }
+
+    arg_entries = (void __user *)ec_qopt.entries;
+
+    ec_qopt.entries = kzalloc(ec_qopt.num_entries * sizeof(ec_est_sched_entry_t), GFP_KERNEL);
+    if (!ec_qopt.entries) {
+        return -ENOMEM;
+    }
+
+    if (copy_from_user(ec_qopt.entries, arg_entries,
+                       ec_qopt.num_entries * sizeof(ec_est_sched_entry_t))) {
+        kfree(ec_qopt.entries);
+        return -EFAULT;
+    }
+
+    ecrt_master_set_est(master, &ec_qopt);
+
+    kfree(ec_qopt.entries);
+
+    return 0;
+}
+
+/*****************************************************************************/
+
+static ATTRIBUTES int ec_ioctl_set_tbs(
+        ec_master_t *master, /**< EtherCAT master. */
+        void *arg, /**< ioctl() argument. */
+        ec_ioctl_context_t *ctx /**< Private data structure of file handle. */
+        )
+{
+    ec_tbs_qopt_offload_t ec_qopt;
+
+    if (unlikely(!ctx->requested))
+        return -EPERM;
+
+    if (copy_from_user(&ec_qopt, (void __user *) arg, sizeof(ec_qopt))) {
+        return -EFAULT;
+    }
+
+    ecrt_master_set_tbs(master, &ec_qopt);
+    return 0;
+}
+
+/*****************************************************************************/
+
 /** Sync the reference clock.
  *
  * \return Zero on success, otherwise a negative error code.
@@ -4890,6 +4949,20 @@ long EC_IOCTL(
                 break;
             }
             ret = ec_ioctl_app_time(master, arg, ctx);
+            break;
+        case EC_IOCTL_SET_EST:
+            if (!ctx->writable) {
+                ret = -EPERM;
+                break;
+            }
+            ret = ec_ioctl_set_est(master, arg, ctx);
+            break;
+        case EC_IOCTL_SET_TBS:
+            if (!ctx->writable) {
+                ret = -EPERM;
+                break;
+            }
+            ret = ec_ioctl_set_tbs(master, arg, ctx);
             break;
         case EC_IOCTL_SYNC_REF:
             if (!ctx->writable) {

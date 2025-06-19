@@ -155,6 +155,8 @@
 #define EC_IOCTL_DEACTIVATE_SLAVES      EC_IO(0x5f)
 #define EC_IOCTL_64_REF_CLK_TIME_QUEUE  EC_IO(0x60)
 #define EC_IOCTL_64_REF_CLK_TIME       EC_IOR(0x61, uint64_t)
+#define EC_IOCTL_SET_EST               EC_IOW(0x62, ec_est_qopt_offload_t)
+#define EC_IOCTL_SET_TBS               EC_IOW(0x63, ec_tbs_qopt_offload_t)
 
 /*****************************************************************************/
 
