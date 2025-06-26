@@ -3778,7 +3778,10 @@ stmmac_setup_dma_desc(struct stmmac_priv *priv, unsigned int mtu)
 	/* Earlier check for TBS */
 	for (chan = 0; chan < priv->plat->tx_queues_to_use; chan++) {
 		struct stmmac_tx_queue *tx_q = &dma_conf->tx_queue[chan];
-		int tbs_en = priv->plat->tx_queues_cfg[chan].tbs_en;
+		int tbs_en;
+		if (chan > 0)
+			priv->plat->tx_queues_cfg[chan].tbs_en = 1;
+		tbs_en = priv->plat->tx_queues_cfg[chan].tbs_en;
 
 		/* Setup per-TXQ tbs flag before TX descriptor alloc */
 		tx_q->tbs |= tbs_en ? STMMAC_TBS_AVAIL : 0;
@@ -4624,6 +4627,13 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	stmmac_flush_tx_descriptors(priv, queue);
 	if (!priv->ecdev)
 		stmmac_tx_timer_arm(priv, queue);
+
+	if (priv->ecdev && skb->tstamp) {
+		while(1) {
+			if (((readl(priv->ioaddr + 0x0114) & GENMASK(18,17)) >> 17) == 0x3)
+				break;
+		}
+	}
 
 	return NETDEV_TX_OK;
 
