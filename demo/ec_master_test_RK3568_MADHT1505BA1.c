@@ -14,20 +14,20 @@
 #include <pthread.h>
 #include <stdarg.h>
 /****************************************************************************/
- 
+
 #include "ecrt.h"
- 
+
 /****************************************************************************/
- 
+
 // Application parameters
 // #define FREQUENCY 250
 #define FREQUENCY 1000
-#define CLOCK_TO_USE CLOCK_MONOTONIC
+#define CLOCK_TO_USE CLOCK_REALTIME
 #define MEASURE_TIMING  1
 #define TARGET_VELOCITY        1124000 /*target velocity*/
 
 #define NSEC_PER_SEC (1000000000L)
-#define PERIOD_NS (NSEC_PER_SEC / FREQUENCY)                                                   
+#define PERIOD_NS (NSEC_PER_SEC / FREQUENCY)
 #define SHIFT_NS  (NSEC_PER_SEC / FREQUENCY /4)
 
 #define DIFF_NS(A, B) (((B).tv_sec - (A).tv_sec) * NSEC_PER_SEC + \
@@ -413,19 +413,36 @@ void cyclic_task_velocity_mode()
     int32_t     cur_velocity;
     bool        print = false;
 
+    ec_est_sched_entry_t est_entries[2];
+    ec_est_qopt_offload_t est_qopt;
+
     struct timespec startTime, endTime, lastStartTime = {};
     uint32_t period_ns = 0, exec_ns = 0, latency_ns = 0,
              latency_min_ns = 0, latency_max_ns = 0,
              period_min_ns = 0, period_max_ns = 0,
              exec_min_ns = 0, exec_max_ns = 0;
-             
+
     period_max_ns = 0;
     period_min_ns = 0xffffffff;
     latency_max_ns = 0;
     latency_min_ns = 0xffffffff;
-    
+
+    est_entries[0].gate_mask = 0x2;
+    est_entries[0].interval = 800000;
+    est_entries[1].gate_mask = 0x1;
+    est_entries[1].interval = 200000;
+
+    est_qopt.num_entries = 2;
+    est_qopt.enable = 1;
+    est_qopt.entries = est_entries;
+    est_qopt.cycle_time = TIMESPEC2NS(cycletime);
+
     clock_gettime(CLOCK_TO_USE, &lastStartTime);
     clock_gettime(CLOCK_TO_USE, &wakeupTime);
+
+    est_qopt.base_time = TIMESPEC2NS(wakeupTime) + est_qopt.cycle_time + 200000;
+    ecrt_master_set_est(master, &est_qopt);
+
     while(app_run) {
         wakeupTime = timespec_add(wakeupTime, cycletime);
         clock_nanosleep(CLOCK_TO_USE, TIMER_ABSTIME, &wakeupTime, NULL);
@@ -435,8 +452,8 @@ void cyclic_task_velocity_mode()
         // It is a good idea to use the target time (not the measured time) as
         // application time, because it is more stable.
         //
-        ecrt_master_application_time(master, TIMESPEC2NS(wakeupTime));
-            
+        ecrt_master_application_time(master, TIMESPEC2NS(wakeupTime) + 200000);
+
         /*Receive process data*/
         ecrt_master_receive(master);
         ecrt_domain_process(domain);
