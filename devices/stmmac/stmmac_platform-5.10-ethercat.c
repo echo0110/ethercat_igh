@@ -395,7 +395,7 @@ static int stmmac_of_get_mac_mode(struct device_node *np)
  * set some private fields that will be used by the main at runtime.
  */
 struct plat_stmmacenet_data *
-stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
+ethercat_stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct plat_stmmacenet_data *plat;
@@ -545,7 +545,7 @@ stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
 	dma_cfg = devm_kzalloc(&pdev->dev, sizeof(*dma_cfg),
 			       GFP_KERNEL);
 	if (!dma_cfg) {
-		stmmac_remove_config_dt(pdev, plat);
+		ethercat_stmmac_remove_config_dt(pdev, plat);
 		return ERR_PTR(-ENOMEM);
 	}
 	plat->dma_cfg = dma_cfg;
@@ -577,7 +577,7 @@ stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
 
 	rc = stmmac_mtl_setup(pdev, plat);
 	if (rc) {
-		stmmac_remove_config_dt(pdev, plat);
+		ethercat_stmmac_remove_config_dt(pdev, plat);
 		return ERR_PTR(rc);
 	}
 
@@ -639,7 +639,7 @@ error_pclk_get:
  *
  * Release resources claimed by stmmac_probe_config_dt().
  */
-void stmmac_remove_config_dt(struct platform_device *pdev,
+void ethercat_stmmac_remove_config_dt(struct platform_device *pdev,
 			     struct plat_stmmacenet_data *plat)
 {
 	clk_disable_unprepare(plat->stmmac_clk);
@@ -649,20 +649,20 @@ void stmmac_remove_config_dt(struct platform_device *pdev,
 }
 #else
 struct plat_stmmacenet_data *
-stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
+ethercat_stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
 {
 	return ERR_PTR(-EINVAL);
 }
 
-void stmmac_remove_config_dt(struct platform_device *pdev,
+void ethercat_stmmac_remove_config_dt(struct platform_device *pdev,
 			     struct plat_stmmacenet_data *plat)
 {
 }
 #endif /* CONFIG_OF */
-EXPORT_SYMBOL_GPL(stmmac_probe_config_dt);
-EXPORT_SYMBOL_GPL(stmmac_remove_config_dt);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_probe_config_dt);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_remove_config_dt);
 
-int stmmac_get_platform_resources(struct platform_device *pdev,
+int ethercat_stmmac_get_platform_resources(struct platform_device *pdev,
 				  struct stmmac_resources *stmmac_res)
 {
 	memset(stmmac_res, 0, sizeof(*stmmac_res));
@@ -702,29 +702,30 @@ int stmmac_get_platform_resources(struct platform_device *pdev,
 
 	return PTR_ERR_OR_ZERO(stmmac_res->addr);
 }
-EXPORT_SYMBOL_GPL(stmmac_get_platform_resources);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_get_platform_resources);
 
 /**
- * stmmac_pltfr_remove
+ * ethercat_stmmac_pltfr_remove
  * @pdev: platform device pointer
  * Description: this function calls the main to free the net resources
  * and calls the platforms hook and release the resources (e.g. mem).
  */
-int stmmac_pltfr_remove(struct platform_device *pdev)
+int ethercat_stmmac_pltfr_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	struct plat_stmmacenet_data *plat = priv->plat;
-	int ret = stmmac_dvr_remove(&pdev->dev);
+	int ret = ethercat_stmmac_dvr_remove(&pdev->dev);
 
 	if (plat->exit)
 		plat->exit(pdev, plat->bsp_priv);
 
-	stmmac_remove_config_dt(pdev, plat);
+	ethercat_stmmac_remove_config_dt(pdev, plat);
+
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(stmmac_pltfr_remove);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_pltfr_remove);
 
 /**
  * stmmac_pltfr_suspend
@@ -740,7 +741,7 @@ static int __maybe_unused stmmac_pltfr_suspend(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	struct platform_device *pdev = to_platform_device(dev);
 
-	ret = stmmac_suspend(dev);
+	ret = ethercat_stmmac_suspend(dev);
 	if (priv->plat->exit)
 		priv->plat->exit(pdev, priv->plat->bsp_priv);
 
@@ -763,7 +764,7 @@ static int __maybe_unused stmmac_pltfr_resume(struct device *dev)
 	if (priv->plat->init)
 		priv->plat->init(pdev, priv->plat->bsp_priv);
 
-	return stmmac_resume(dev);
+	return ethercat_stmmac_resume(dev);
 }
 
 static int __maybe_unused stmmac_runtime_suspend(struct device *dev)
@@ -771,7 +772,7 @@ static int __maybe_unused stmmac_runtime_suspend(struct device *dev)
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
 
-	stmmac_bus_clks_config(priv, false);
+	ethercat_stmmac_bus_clks_config(priv, false);
 
 	return 0;
 }
@@ -781,7 +782,7 @@ static int __maybe_unused stmmac_runtime_resume(struct device *dev)
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
 
-	return stmmac_bus_clks_config(priv, true);
+	return ethercat_stmmac_bus_clks_config(priv, true);
 }
 
 static int __maybe_unused stmmac_pltfr_noirq_suspend(struct device *dev)
@@ -832,12 +833,12 @@ static int __maybe_unused stmmac_pltfr_noirq_resume(struct device *dev)
 	return 0;
 }
 
-const struct dev_pm_ops stmmac_pltfr_pm_ops = {
+const struct dev_pm_ops ethercat_stmmac_pltfr_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(stmmac_pltfr_suspend, stmmac_pltfr_resume)
 	SET_RUNTIME_PM_OPS(stmmac_runtime_suspend, stmmac_runtime_resume, NULL)
 	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(stmmac_pltfr_noirq_suspend, stmmac_pltfr_noirq_resume)
 };
-EXPORT_SYMBOL_GPL(stmmac_pltfr_pm_ops);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_pltfr_pm_ops);
 
 MODULE_DESCRIPTION("STMMAC 10/100/1000 Ethernet platform support");
 MODULE_AUTHOR("Giuseppe Cavallaro <peppe.cavallaro@st.com>");

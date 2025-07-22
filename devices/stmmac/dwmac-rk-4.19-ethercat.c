@@ -2322,7 +2322,7 @@ static int rk_integrated_phy_power(void *priv, bool up)
 	return 0;
 }
 
-void dwmac_rk_set_rgmii_delayline(struct stmmac_priv *priv,
+void ethercat_dwmac_rk_set_rgmii_delayline(struct stmmac_priv *priv,
 				  int tx_delay, int rx_delay)
 {
 	struct rk_priv_data *bsp_priv = priv->plat->bsp_priv;
@@ -2333,9 +2333,9 @@ void dwmac_rk_set_rgmii_delayline(struct stmmac_priv *priv,
 		bsp_priv->rx_delay = rx_delay;
 	}
 }
-EXPORT_SYMBOL(dwmac_rk_set_rgmii_delayline);
+EXPORT_SYMBOL(ethercat_dwmac_rk_set_rgmii_delayline);
 
-void dwmac_rk_get_rgmii_delayline(struct stmmac_priv *priv,
+void ethercat_dwmac_rk_get_rgmii_delayline(struct stmmac_priv *priv,
 				  int *tx_delay, int *rx_delay)
 {
 	struct rk_priv_data *bsp_priv = priv->plat->bsp_priv;
@@ -2346,15 +2346,15 @@ void dwmac_rk_get_rgmii_delayline(struct stmmac_priv *priv,
 	*tx_delay = bsp_priv->tx_delay;
 	*rx_delay = bsp_priv->rx_delay;
 }
-EXPORT_SYMBOL(dwmac_rk_get_rgmii_delayline);
+EXPORT_SYMBOL(ethercat_dwmac_rk_get_rgmii_delayline);
 
-int dwmac_rk_get_phy_interface(struct stmmac_priv *priv)
+int ethercat_dwmac_rk_get_phy_interface(struct stmmac_priv *priv)
 {
 	struct rk_priv_data *bsp_priv = priv->plat->bsp_priv;
 
 	return bsp_priv->phy_iface;
 }
-EXPORT_SYMBOL(dwmac_rk_get_phy_interface);
+EXPORT_SYMBOL(ethercat_dwmac_rk_get_phy_interface);
 
 void __weak rk_devinfo_get_eth_mac(u8 *mac)
 {
@@ -2415,11 +2415,11 @@ static int rk_gmac_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	ret = stmmac_get_platform_resources(pdev, &stmmac_res);
+	ret = ethercat_stmmac_get_platform_resources(pdev, &stmmac_res);
 	if (ret)
 		return ret;
 
-	plat_dat = stmmac_probe_config_dt(pdev, &stmmac_res.mac);
+	plat_dat = ethercat_stmmac_probe_config_dt(pdev, &stmmac_res.mac);
 	if (IS_ERR(plat_dat))
 		return PTR_ERR(plat_dat);
 
@@ -2444,7 +2444,7 @@ static int rk_gmac_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_remove_config_dt;
 
-	ret = stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
+	ret = ethercat_stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
 	if (ret)
 		goto err_gmac_powerdown;
 
@@ -2453,7 +2453,7 @@ static int rk_gmac_probe(struct platform_device *pdev)
 err_gmac_powerdown:
 	rk_gmac_powerdown(plat_dat->bsp_priv);
 err_remove_config_dt:
-	stmmac_remove_config_dt(pdev, plat_dat);
+	ethercat_stmmac_remove_config_dt(pdev, plat_dat);
 
 	return ret;
 }
@@ -2461,7 +2461,7 @@ err_remove_config_dt:
 static int rk_gmac_remove(struct platform_device *pdev)
 {
 	struct rk_priv_data *bsp_priv = get_stmmac_bsp_priv(&pdev->dev);
-	int ret = stmmac_dvr_remove(&pdev->dev);
+	int ret = ethercat_stmmac_dvr_remove(&pdev->dev);
 
 	rk_gmac_powerdown(bsp_priv);
 
@@ -2472,7 +2472,7 @@ static int rk_gmac_remove(struct platform_device *pdev)
 static int rk_gmac_suspend(struct device *dev)
 {
 	struct rk_priv_data *bsp_priv = get_stmmac_bsp_priv(dev);
-	int ret = stmmac_suspend(dev);
+	int ret = ethercat_stmmac_suspend(dev);
 
 	/* Keep the PHY up if we use Wake-on-Lan. */
 	if (!device_may_wakeup(dev)) {
@@ -2493,7 +2493,7 @@ static int rk_gmac_resume(struct device *dev)
 		bsp_priv->suspended = false;
 	}
 
-	return stmmac_resume(dev);
+	return ethercat_stmmac_resume(dev);
 }
 #endif /* CONFIG_PM_SLEEP */
 
@@ -2534,7 +2534,7 @@ static const struct of_device_id rk_gmac_dwmac_match[] = {
 	{ .compatible = "rockchip,rk3528-gmac", .data = &rk3528_ops },
 #endif
 #ifdef CONFIG_CPU_RK3568
-	{ .compatible = "rockchip,rk3568-gmac", .data = &rk3568_ops },
+	{ .compatible = "rockchip,rk3568-gmac-ethercat", .data = &rk3568_ops },
 #endif
 #ifdef CONFIG_CPU_RV110X
 	{ .compatible = "rockchip,rv1108-gmac", .data = &rv1108_ops },
@@ -2546,16 +2546,16 @@ static const struct of_device_id rk_gmac_dwmac_match[] = {
 };
 MODULE_DEVICE_TABLE(of, rk_gmac_dwmac_match);
 
-static struct platform_driver rk_gmac_dwmac_driver = {
+static struct platform_driver rk_gmac_dwmac_driver_ethercat = {
 	.probe  = rk_gmac_probe,
 	.remove = rk_gmac_remove,
 	.driver = {
-		.name           = "rk_gmac-dwmac",
+		.name           = "rk_gmac-dwmac-ethercat",
 		.pm		= &rk_gmac_pm_ops,
 		.of_match_table = rk_gmac_dwmac_match,
 	},
 };
-module_platform_driver(rk_gmac_dwmac_driver);
+module_platform_driver(rk_gmac_dwmac_driver_ethercat);
 
 MODULE_AUTHOR("Chen-Zhi (Roger Chen) <roger.chen@rock-chips.com>");
 MODULE_DESCRIPTION("Rockchip RK3288 DWMAC specific glue layer");

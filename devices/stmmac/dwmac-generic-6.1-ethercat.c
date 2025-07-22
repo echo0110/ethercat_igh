@@ -22,12 +22,12 @@ static int dwmac_generic_probe(struct platform_device *pdev)
 	struct stmmac_resources stmmac_res;
 	int ret;
 
-	ret = stmmac_get_platform_resources(pdev, &stmmac_res);
+	ret = ethercat_stmmac_get_platform_resources(pdev, &stmmac_res);
 	if (ret)
 		return ret;
 
 	if (pdev->dev.of_node) {
-		plat_dat = stmmac_probe_config_dt(pdev, stmmac_res.mac);
+		plat_dat = ethercat_stmmac_probe_config_dt(pdev, stmmac_res.mac);
 		if (IS_ERR(plat_dat)) {
 			dev_err(&pdev->dev, "dt configuration failed\n");
 			return PTR_ERR(plat_dat);
@@ -87,10 +87,10 @@ MODULE_DEVICE_TABLE(of, dwmac_generic_match);
 
 static struct platform_driver dwmac_generic_driver = {
 	.probe  = dwmac_generic_probe,
-	.remove = stmmac_pltfr_remove,
+	.remove = ethercat_stmmac_pltfr_remove,
 	.driver = {
 		.name           = STMMAC_RESOURCE_NAME,
-		.pm		= &stmmac_pltfr_pm_ops,
+		.pm		= &ethercat_stmmac_pltfr_pm_ops,
 		.of_match_table = of_match_ptr(dwmac_generic_match),
 	},
 };

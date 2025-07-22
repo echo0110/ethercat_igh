@@ -4334,7 +4334,7 @@ static int stmmac_hw_init(struct stmmac_priv *priv)
 }
 
 /**
- * stmmac_dvr_probe
+ * ethercat_stmmac_dvr_probe
  * @device: device pointer
  * @plat_dat: platform data pointer
  * @res: stmmac resource pointer
@@ -4343,7 +4343,7 @@ static int stmmac_hw_init(struct stmmac_priv *priv)
  * Return:
  * returns 0 on success, otherwise errno.
  */
-int stmmac_dvr_probe(struct device *device,
+int ethercat_stmmac_dvr_probe(struct device *device,
 		     struct plat_stmmacenet_data *plat_dat,
 		     struct stmmac_resources *res)
 {
@@ -4562,15 +4562,15 @@ error_wq:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(stmmac_dvr_probe);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_dvr_probe);
 
 /**
- * stmmac_dvr_remove
+ * ethercat_stmmac_dvr_remove
  * @dev: device pointer
  * Description: this function resets the TX/RX processes, disables the MAC RX/TX
  * changes the link status, releases the DMA descriptor rings.
  */
-int stmmac_dvr_remove(struct device *dev)
+int ethercat_stmmac_dvr_remove(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
@@ -4605,16 +4605,16 @@ int stmmac_dvr_remove(struct device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(stmmac_dvr_remove);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_dvr_remove);
 
 /**
- * stmmac_suspend - suspend callback
+ * ethercat_stmmac_suspend - suspend callback
  * @dev: device pointer
  * Description: this is the function to suspend the device and it is called
  * by the platform driver to stop the network queue, release the resources,
  * program the PMT register (for WoL), clean and release driver resources.
  */
-int stmmac_suspend(struct device *dev)
+int ethercat_stmmac_suspend(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
@@ -4671,7 +4671,7 @@ int stmmac_suspend(struct device *dev)
 	priv->oldduplex = DUPLEX_UNKNOWN;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(stmmac_suspend);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_suspend);
 
 /**
  * stmmac_reset_queues_param - reset queue parameters
@@ -4702,12 +4702,12 @@ static void stmmac_reset_queues_param(struct stmmac_priv *priv)
 }
 
 /**
- * stmmac_resume - resume callback
+ * ethercat_stmmac_resume - resume callback
  * @dev: device pointer
  * Description: when resume this function is invoked to setup the DMA and CORE
  * in a usable state.
  */
-int stmmac_resume(struct device *dev)
+int ethercat_stmmac_resume(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
@@ -4738,7 +4738,7 @@ int stmmac_resume(struct device *dev)
 			clk_prepare_enable(priv->plat->clk_ptp_ref);
 		/* reset the phy so that it's ready */
 		if (priv->mii)
-			stmmac_mdio_reset(priv->mii);
+			ethercat_stmmac_mdio_reset(priv->mii);
 		if (priv->plat->integrated_phy_power)
 			priv->plat->integrated_phy_power(priv->plat->bsp_priv,
 							 true);
@@ -4768,7 +4768,7 @@ int stmmac_resume(struct device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(stmmac_resume);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_resume);
 
 #ifndef MODULE
 static int __init stmmac_cmdline_opt(char *str)

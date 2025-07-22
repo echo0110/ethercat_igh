@@ -340,7 +340,7 @@ enum stmmac_state {
 
 int stmmac_mdio_unregister(struct net_device *ndev);
 int stmmac_mdio_register(struct net_device *ndev);
-int stmmac_mdio_reset(struct mii_bus *mii);
+int ethercat_stmmac_mdio_reset(struct mii_bus *mii);
 int stmmac_xpcs_setup(struct mii_bus *mii);
 
 #ifdef CONFIG_STMMAC_ETHTOOL
@@ -351,22 +351,22 @@ static inline void stmmac_set_ethtool_ops(struct net_device *netdev)
 }
 #endif
 
-int stmmac_init_tstamp_counter(struct stmmac_priv *priv, u32 systime_flags);
+int ethercat_stmmac_init_tstamp_counter(struct stmmac_priv *priv, u32 systime_flags);
 void stmmac_ptp_register(struct stmmac_priv *priv);
 void stmmac_ptp_unregister(struct stmmac_priv *priv);
 int stmmac_xdp_open(struct net_device *dev);
 void stmmac_xdp_release(struct net_device *dev);
-int stmmac_resume(struct device *dev);
-int stmmac_suspend(struct device *dev);
-int stmmac_dvr_remove(struct device *dev);
-int stmmac_dvr_probe(struct device *device,
+int ethercat_stmmac_resume(struct device *dev);
+int ethercat_stmmac_suspend(struct device *dev);
+int ethercat_stmmac_dvr_remove(struct device *dev);
+int ethercat_stmmac_dvr_probe(struct device *device,
 		     struct plat_stmmacenet_data *plat_dat,
 		     struct stmmac_resources *res);
 void stmmac_disable_eee_mode(struct stmmac_priv *priv);
 bool stmmac_eee_init(struct stmmac_priv *priv);
 int stmmac_reinit_queues(struct net_device *dev, u32 rx_cnt, u32 tx_cnt);
 int stmmac_reinit_ringparam(struct net_device *dev, u32 rx_size, u32 tx_size);
-int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled);
+int ethercat_stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled);
 void stmmac_fpe_handshake(struct stmmac_priv *priv, bool enable);
 
 static inline bool stmmac_xdp_is_enabled(struct stmmac_priv *priv)

@@ -339,11 +339,11 @@ err_disable_clks:
 }
 
 /**
- * stmmac_mdio_reset
+ * ethercat_stmmac_mdio_reset
  * @bus: points to the mii_bus structure
  * Description: reset the MII bus
  */
-int stmmac_mdio_reset(struct mii_bus *bus)
+int ethercat_stmmac_mdio_reset(struct mii_bus *bus)
 {
 #if IS_ENABLED(CONFIG_STMMAC_PLATFORM)
 	struct net_device *ndev = bus->priv;
@@ -397,7 +397,7 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 #endif
 	return 0;
 }
-EXPORT_SYMBOL(stmmac_mdio_reset);
+EXPORT_SYMBOL(ethercat_stmmac_mdio_reset);
 
 int stmmac_xpcs_setup(struct mii_bus *bus)
 {
@@ -484,7 +484,7 @@ int stmmac_mdio_register(struct net_device *ndev)
 	}
 
 	if (mdio_bus_data->needs_reset)
-		new_bus->reset = &stmmac_mdio_reset;
+		new_bus->reset = &ethercat_stmmac_mdio_reset;
 
 	snprintf(new_bus->id, MII_BUS_ID_SIZE, "%s-%x",
 		 new_bus->name, priv->plat->bus_id);

@@ -72,7 +72,7 @@ static void dwmac100_set_umac_addr(struct mac_device_info *hw,
 				   unsigned int reg_n)
 {
 	void __iomem *ioaddr = hw->pcsr;
-	stmmac_set_mac_addr(ioaddr, addr, MAC_ADDR_HIGH, MAC_ADDR_LOW);
+	ethercat_stmmac_set_mac_addr(ioaddr, addr, MAC_ADDR_HIGH, MAC_ADDR_LOW);
 }
 
 static void dwmac100_get_umac_addr(struct mac_device_info *hw,
@@ -80,7 +80,7 @@ static void dwmac100_get_umac_addr(struct mac_device_info *hw,
 				   unsigned int reg_n)
 {
 	void __iomem *ioaddr = hw->pcsr;
-	stmmac_get_mac_addr(ioaddr, addr, MAC_ADDR_HIGH, MAC_ADDR_LOW);
+	ethercat_stmmac_get_mac_addr(ioaddr, addr, MAC_ADDR_HIGH, MAC_ADDR_LOW);
 }
 
 static void dwmac100_set_filter(struct mac_device_info *hw,

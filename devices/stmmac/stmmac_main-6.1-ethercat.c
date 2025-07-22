@@ -147,7 +147,7 @@ static void stmmac_exit_fs(struct net_device *dev);
 
 #define STMMAC_COAL_TIMER(x) (ns_to_ktime((x) * NSEC_PER_USEC))
 
-int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled)
+int ethercat_stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled)
 {
 	int ret = 0;
 
@@ -177,7 +177,7 @@ int stmmac_bus_clks_config(struct stmmac_priv *priv, bool enabled)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(stmmac_bus_clks_config);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_bus_clks_config);
 
 /**
  * stmmac_verify_args - verify the driver parameters.
@@ -832,7 +832,7 @@ static int stmmac_hwtstamp_get(struct net_device *dev, struct ifreq *ifr)
  * Will be rerun after resuming from suspend, case in which the timestamping
  * flags updated by stmmac_hwtstamp_set() also need to be restored.
  */
-int stmmac_init_tstamp_counter(struct stmmac_priv *priv, u32 systime_flags)
+int ethercat_stmmac_init_tstamp_counter(struct stmmac_priv *priv, u32 systime_flags)
 {
 	bool xmac = priv->plat->has_gmac4 || priv->plat->has_xgmac;
 	struct timespec64 now;
@@ -871,7 +871,7 @@ int stmmac_init_tstamp_counter(struct stmmac_priv *priv, u32 systime_flags)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(stmmac_init_tstamp_counter);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_init_tstamp_counter);
 
 /**
  * stmmac_init_ptp - init PTP
@@ -888,7 +888,7 @@ static int stmmac_init_ptp(struct stmmac_priv *priv)
 	if (priv->plat->ptp_clk_freq_config)
 		priv->plat->ptp_clk_freq_config(priv);
 
-	ret = stmmac_init_tstamp_counter(priv, STMMAC_HWTS_ACTIVE);
+	ret = ethercat_stmmac_init_tstamp_counter(priv, STMMAC_HWTS_ACTIVE);
 	if (ret)
 		return ret;
 
@@ -7189,7 +7189,7 @@ void stmmac_fpe_handshake(struct stmmac_priv *priv, bool enable)
 }
 
 /**
- * stmmac_dvr_probe
+ * ethercat_stmmac_dvr_probe
  * @device: device pointer
  * @plat_dat: platform data pointer
  * @res: stmmac resource pointer
@@ -7198,7 +7198,7 @@ void stmmac_fpe_handshake(struct stmmac_priv *priv, bool enable)
  * Return:
  * returns 0 on success, otherwise errno.
  */
-int stmmac_dvr_probe(struct device *device,
+int ethercat_stmmac_dvr_probe(struct device *device,
 		     struct plat_stmmacenet_data *plat_dat,
 		     struct stmmac_resources *res)
 {
@@ -7501,15 +7501,15 @@ error_wq_init:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(stmmac_dvr_probe);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_dvr_probe);
 
 /**
- * stmmac_dvr_remove
+ * ethercat_stmmac_dvr_remove
  * @dev: device pointer
  * Description: this function resets the TX/RX processes, disables the MAC RX/TX
  * changes the link status, releases the DMA descriptor rings.
  */
-int stmmac_dvr_remove(struct device *dev)
+int ethercat_stmmac_dvr_remove(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
@@ -7547,16 +7547,16 @@ int stmmac_dvr_remove(struct device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(stmmac_dvr_remove);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_dvr_remove);
 
 /**
- * stmmac_suspend - suspend callback
+ * ethercat_stmmac_suspend - suspend callback
  * @dev: device pointer
  * Description: this is the function to suspend the device and it is called
  * by the platform driver to stop the network queue, release the resources,
  * program the PMT register (for WoL), clean and release driver resources.
  */
-int stmmac_suspend(struct device *dev)
+int ethercat_stmmac_suspend(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
@@ -7627,7 +7627,7 @@ int stmmac_suspend(struct device *dev)
 	priv->speed = SPEED_UNKNOWN;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(stmmac_suspend);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_suspend);
 
 static void stmmac_reset_rx_queue(struct stmmac_priv *priv, u32 queue)
 {
@@ -7666,12 +7666,12 @@ static void stmmac_reset_queues_param(struct stmmac_priv *priv)
 }
 
 /**
- * stmmac_resume - resume callback
+ * ethercat_stmmac_resume - resume callback
  * @dev: device pointer
  * Description: when resume this function is invoked to setup the DMA and CORE
  * in a usable state.
  */
-int stmmac_resume(struct device *dev)
+int ethercat_stmmac_resume(struct device *dev)
 {
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
@@ -7698,7 +7698,7 @@ int stmmac_resume(struct device *dev)
 		pinctrl_pm_select_default_state(priv->device);
 		/* reset the phy so that it's ready */
 		if (priv->mii)
-			stmmac_mdio_reset(priv->mii);
+			ethercat_stmmac_mdio_reset(priv->mii);
 		if (priv->plat->integrated_phy_power)
 			priv->plat->integrated_phy_power(priv->plat->bsp_priv,
 							 true);
@@ -7749,7 +7749,7 @@ int stmmac_resume(struct device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(stmmac_resume);
+EXPORT_SYMBOL_GPL(ethercat_stmmac_resume);
 
 #ifndef MODULE
 static int __init stmmac_cmdline_opt(char *str)

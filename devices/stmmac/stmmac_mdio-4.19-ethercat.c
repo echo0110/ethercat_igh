@@ -237,11 +237,11 @@ static int stmmac_mdio_write(struct mii_bus *bus, int phyaddr, int phyreg,
 }
 
 /**
- * stmmac_mdio_reset
+ * ethercat_stmmac_mdio_reset
  * @bus: points to the mii_bus structure
  * Description: reset the MII bus
  */
-int stmmac_mdio_reset(struct mii_bus *bus)
+int ethercat_stmmac_mdio_reset(struct mii_bus *bus)
 {
 #if IS_ENABLED(CONFIG_STMMAC_PLATFORM)
 	struct net_device *ndev = bus->priv;
@@ -302,7 +302,7 @@ int stmmac_mdio_reset(struct mii_bus *bus)
 #endif
 	return 0;
 }
-EXPORT_SYMBOL(stmmac_mdio_reset);
+EXPORT_SYMBOL(ethercat_stmmac_mdio_reset);
 
 /**
  * stmmac_mdio_register
@@ -353,7 +353,7 @@ int stmmac_mdio_register(struct net_device *ndev)
 		max_addr = PHY_MAX_ADDR;
 	}
 
-	new_bus->reset = &stmmac_mdio_reset;
+	new_bus->reset = &ethercat_stmmac_mdio_reset;
 	snprintf(new_bus->id, MII_BUS_ID_SIZE, "%s-%x",
 		 new_bus->name, priv->plat->bus_id);
 	new_bus->priv = ndev;
