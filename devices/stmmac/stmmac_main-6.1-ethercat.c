@@ -4628,13 +4628,6 @@ static netdev_tx_t stmmac_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (!priv->ecdev)
 		stmmac_tx_timer_arm(priv, queue);
 
-	if (priv->ecdev && skb->tstamp) {
-		while(1) {
-			if (((readl(priv->ioaddr + 0x0114) & GENMASK(18,17)) >> 17) == 0x3)
-				break;
-		}
-	}
-
 	return NETDEV_TX_OK;
 
 dma_map_err:
