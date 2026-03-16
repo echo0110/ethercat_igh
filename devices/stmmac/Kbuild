@@ -68,7 +68,6 @@ ifeq (1,1)
 		stmmac_ptp-5.10-ethercat.o \
 		stmmac_platform-5.10-ethercat.o \
 		dwmac-rk-5.10-ethercat.o \
-		stmmac_xdp-5.10-ethercat.o
 
 	obj-m += ec_stmmac.o
 	ec_stmmac-objs := $(EC_STMMAC_OBJ)

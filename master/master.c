@@ -50,7 +50,8 @@
 #include "device.h"
 #include "datagram.h"
 #include "mailbox.h"
-#include "../devices/stmmac/stmmac-6.1-ethercat.h"
+//#include "../devices/stmmac/stmmac-6.1-ethercat.h"
+#include "../devices/stmmac/stmmac-5.10-ethercat.h"
 
 #ifdef EC_EOE
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
@@ -3104,14 +3105,14 @@ void ecrt_master_set_est(ec_master_t *master, ec_est_qopt_offload_t *ec_qopt)
 {
     struct tc_taprio_qopt_offload *qopt = NULL;
     struct net_device *ndev = master->devices[0].dev;
-
+    int i;
     qopt = kzalloc(sizeof(*qopt) + ec_qopt->num_entries * sizeof(struct tc_taprio_sched_entry), GFP_KERNEL);
     if (!qopt) {
         EC_MASTER_ERR(master, "Failed to allocate memory for tc_taprio_qopt_offload.\n");
         return;
     }
 
-    for (int i = 0; i < ec_qopt->num_entries; i++) {
+    for (i = 0; i < ec_qopt->num_entries; i++) {
         qopt->entries[i].command = TC_TAPRIO_CMD_SET_GATES;
         qopt->entries[i].gate_mask = ec_qopt->entries[i].gate_mask;
         qopt->entries[i].interval = ec_qopt->entries[i].interval;
