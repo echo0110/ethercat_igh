@@ -2911,6 +2911,7 @@ static const struct of_device_id rk_gmac_dwmac_match[] = {
 	{ .compatible = "rockchip,rk3568-gmac-ethercat", .data = &rk3568_ops },
 #endif
 #ifdef CONFIG_CPU_RK3588
+	{ .compatible = "rockchip,rk3588-gmac", .data = &rk3588_ops },
 	{ .compatible = "rockchip,rk3588-gmac-ethercat", .data = &rk3588_ops },
 #endif
 #ifdef CONFIG_CPU_RV1106
